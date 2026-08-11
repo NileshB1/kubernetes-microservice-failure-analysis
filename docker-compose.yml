@@ -1,0 +1,196 @@
+# ============================================================
+# Docker Compose — Full Distributed Pipeline
+# ============================================================
+# Services:
+#  1. minio         — S3-compatible blob storage (dataset source)
+#  2. spark-master  — Spark cluster master node
+#  3. spark-worker  — Spark cluster worker nodes (scales via replicas)
+#  4. postgres      — PostgreSQL database for results
+#  5. pipeline      — Runs the end-to-end analysis pipeline
+# ============================================================
+
+version: "3.9"
+
+services:
+  # ==========================================================
+  # MinIO — Blob Storage (S3-compatible)
+  # ==========================================================
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - spark-network
+
+  # ==========================================================
+  # MinIO Bucket Creator (one-shot)
+  # ==========================================================
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minioadmin minioadmin;
+      mc mb --ignore-existing local/microservice-logs;
+      echo 'MinIO bucket microservice-logs ready';
+      "
+    networks:
+      - spark-network
+
+  # ==========================================================
+  # Spark Master
+  # ==========================================================
+  spark-master:
+    image: bitnami/spark:3.5
+    container_name: spark-master
+    environment:
+      - SPARK_MODE=master
+      - SPARK_MASTER_HOST=spark-master
+      - SPARK_MASTER_PORT=7077
+      - SPARK_MASTER_WEBUI_PORT=8080
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+    ports:
+      - "7077:7077"
+      - "8080:8080"
+    volumes:
+      - spark_events:/tmp/spark-events
+    networks:
+      - spark-network
+
+  # ==========================================================
+  # Spark Workers (scale with --scale spark-worker=N)
+  # ==========================================================
+  spark-worker:
+    image: bitnami/spark:3.5
+    depends_on:
+      - spark-master
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_CORES=${SPARK_WORKER_CORES:-2}
+      - SPARK_WORKER_MEMORY=${SPARK_WORKER_MEMORY:-2g}
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+    deploy:
+      replicas: 4
+    volumes:
+      - spark_events:/tmp/spark-events
+    networks:
+      - spark-network
+
+  # ==========================================================
+  # PostgreSQL — Results Database
+  # ==========================================================
+  postgres:
+    image: postgres:16
+    container_name: postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sparkuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sparkpass}
+      POSTGRES_DB: ${POSTGRES_DB:-microservice_analysis}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sparkuser -d microservice_analysis"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - spark-network
+
+  # ==========================================================
+  # Pipeline Runner — Application Container
+  # ==========================================================
+  pipeline:
+    build: .
+    container_name: pipeline-runner
+    depends_on:
+      minio:
+        condition: service_healthy
+      spark-master:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-http://minio:9000}
+      - MINIO_BUCKET=${MINIO_BUCKET:-microservice-logs}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
+      - POSTGRES_USER=${POSTGRES_USER:-sparkuser}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-sparkpass}
+      - POSTGRES_DB=${POSTGRES_DB:-microservice_analysis}
+      - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+      - SPARK_MASTER_URL=${SPARK_MASTER_URL:-spark://spark-master:7077}
+      - SPARK_DRIVER_MEMORY=${SPARK_DRIVER_MEMORY:-2g}
+      - SPARK_EXECUTOR_MEMORY=${SPARK_EXECUTOR_MEMORY:-2g}
+      - SAMPLE_DATA_ROWS=${SAMPLE_DATA_ROWS:-1000000}
+      - SCALABILITY_DATA_SIZES=${SCALABILITY_DATA_SIZES:-1000000,5000000,10000000,25000000,50000000}
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./output:/output
+      - ./data:/data
+    networks:
+      - spark-network
+    command: ["/app/scripts/run_pipeline.sh"]
+
+  # ==========================================================
+  # Streamlit Dashboard
+  # ==========================================================
+  dashboard:
+    build: .
+    container_name: streamlit-dashboard
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8501:8501"
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-sparkuser}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-sparkpass}
+      - POSTGRES_DB=${POSTGRES_DB:-microservice_analysis}
+      - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+      - SPARK_MASTER_URL=${SPARK_MASTER_URL:-spark://spark-master:7077}
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-http://minio:9000}
+    volumes:
+      - ./output:/output
+    networks:
+      - spark-network
+    command: ["streamlit", "run", "modules/dashboard.py",
+              "--server.port=8501", "--server.address=0.0.0.0",
+              "--server.headless=true"]
+
+volumes:
+  minio_data:
+  postgres_data:
+  spark_events:
+
+networks:
+  spark-network:
+    driver: bridge

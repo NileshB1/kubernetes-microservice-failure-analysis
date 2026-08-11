@@ -1,0 +1,39 @@
+# ============================================================
+# docker-compose.override.yml — Development Quick-Test Mode
+# ============================================================
+# Docker Compose auto-merges this with docker-compose.yml.
+# Use when you want fast iteration with minimal resources.
+#
+# Overrides:
+#   - 1 Spark worker (instead of 4)
+#   - 100K sample rows (instead of 1M)
+#   - 1g executor/driver memory (instead of 2g)
+#   - Reduced worker memory
+#   - Smaller scalability tests (100K–1M instead of 1M–50M)
+#   - Dashboard included (port 8501)
+#
+# To use production settings, skip the override:
+#   docker-compose -f docker-compose.yml up --build
+#
+# To use quick-test mode (default when override exists):
+#   docker-compose up --build
+# ============================================================
+
+services:
+  spark-worker:
+    deploy:
+      replicas: 1
+    environment:
+      SPARK_WORKER_CORES: "1"
+      SPARK_WORKER_MEMORY: "1g"
+
+  pipeline:
+    environment:
+      SAMPLE_DATA_ROWS: "100000"
+      SPARK_DRIVER_MEMORY: "1g"
+      SPARK_EXECUTOR_MEMORY: "1g"
+      SCALABILITY_DATA_SIZES: "100000,500000,1000000"
+
+  dashboard:
+    ports:
+      - "8501:8501"

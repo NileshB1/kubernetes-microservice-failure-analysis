@@ -1,0 +1,69 @@
+
+# Project Configuration (YAML)
+
+
+# Module-level parameters
+ingestion:
+  bucket_name: microservice-logs
+  dataset_prefix: raw/
+  files:
+    - trace_service_name.csv
+    - trace_response_times.csv
+    - trace_request_times.csv
+    - resource_usage.csv
+
+preprocessing:
+  input_prefix: raw/
+  output_prefix: processed/
+  partition_columns: ["service_name"]
+  timestamp_column: timestamp
+  null_threshold: 0.5
+  output_format: parquet
+
+cross_service_analysis:
+  input_prefix: processed/
+  output_prefix: analysis/cross_service/
+  window_duration_seconds: 300
+  failure_latency_threshold_ms: 2000
+  propagation_time_window_seconds: 60
+  min_correlation_threshold: 0.3
+
+failure_detection:
+  input_prefix: processed/
+  output_prefix: analysis/failure_detection/
+  anomaly_zscore_threshold: 3.0
+  # Absolute SLO ceilings. 
+  error_rate_threshold: 0.05
+  latency_slo_ms: 1000.0
+  baseline_window_hours: 24
+  rolling_window_minutes: 15
+
+scalability:
+  input_prefix: processed/
+  data_sizes: [1000000, 5000000, 10000000, 25000000, 50000000]
+  worker_configs:
+    - name: "small"
+      executors: 2
+      cores: 1
+      memory: "1g"
+    - name: "production"
+      executors: 4
+      cores: 2
+      memory: "2g"
+  repetitions: 3
+
+visualization:
+  output_dir: /output
+  plot_format: png
+  dpi: 150
+  figsize: [12, 8]
+  color_palette: "Set2"
+
+database:
+  url: postgresql://sparkuser:sparkpass@postgres:5432/microservice_analysis
+  tables:
+    processed_telemetry: processed_telemetry
+    cross_service_failures: cross_service_failures
+    failure_patterns: failure_patterns
+    scalability_metrics: scalability_metrics
+    anomaly_scores: anomaly_scores
