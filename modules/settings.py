@@ -1,7 +1,7 @@
 
 # Settings - Typed, Validated Configuration
 
-# One place that reads the environment. 
+# One place that reads the environment....
 
 from __future__ import annotations
 
@@ -21,15 +21,12 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 # Credentials that ship in the repo for local convenience. 
 INSECURE_DEFAULT_CREDENTIALS = frozenset(
-    {
-        "sparkpass", "minioadmin",
-        "postgres",  "password", "changeme"
-    }
+    {"sparkpass", "minioadmin", "postgres",  "password", "changeme" }
 )
 
 
 class ConfigurationError(RuntimeError):
-    """Raised when settings are missing or unsafe for the current environment."""
+    """Raised when settings are missing or unsafe for the current environment"""
 
 
 # Env parsing helpers

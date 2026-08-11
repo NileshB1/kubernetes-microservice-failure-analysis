@@ -15,7 +15,8 @@ logger = setup_logging("source_adapter")
 # Stripping the last two segments recovers the service name.
 POD_TO_SERVICE = r"-[^-]+-[^-]+$"
 
-# Nezha's Duration column is microseconds.
+
+#Nezha's Duration column is microseconds.
 MICROS_PER_MS = 1000.0
 NANOS_PER_SEC = 1_000_000_000.0
 
@@ -26,17 +27,14 @@ CANONICAL_DATASETS = (
 
 # Which benchmark application each capture ran against - a real property
 # of the source, carried through as the namespace
-CAPTURE_NAMESPACES = {
-    "2022-08-22": "hipstershop", "2022-08-23": "hipstershop", "2023-01-29": "trainticket",
-    "2023-01-30": "trainticket",
-}
+CAPTURE_NAMESPACES = {"2022-08-22": "hipstershop", "2022-08-23": "hipstershop", "2023-01-29": "trainticket",
+    "2023-01-30": "trainticket"}
 
 DEFAULT_DEGRADATION_PERCENTILE = 0.99
 
 
 
 # Reading the source
-
 def resolve_input_paths(base_path: str, roots: tuple[str, ...], pattern: str) -> list[str]:
     """
     Turn a per-root glob into something Spark can actually read
@@ -194,8 +192,7 @@ def build_canonical_datasets(
     metrics = read_source_metrics(spark, base_path, roots)
 
     # The baseline profile is small (one row per operation) and is joined
-    # against every span, so broadcasting avoids a shuffle of the 1.5M-row
-    # side.
+    # against every span, so broadcasting avoids a shuffle of the 1.5M-row side
     baseline = learn_latency_baseline(traces, percentile)
     traces = traces.join(F.broadcast(baseline), on="endpoint", how="left")
 
@@ -299,7 +296,7 @@ def write_canonical_datasets(datasets: dict[str, DataFrame], output_path: str) -
     counts: dict[str, int] = {}
     for name, df in datasets.items():
         destination = f"{output_path.rstrip('/')}/{name}.csv"
-        logger.info("Writing %s ...", destination)
+        logger.info("Writing %s ....", destination)
         (df.coalesce(1).write.mode("overwrite").option("header", "true").csv(destination))
         counts[name] = df.count()
         logger.info("  %s: %s rows", name, f"{counts[name]:,}")

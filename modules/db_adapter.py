@@ -10,6 +10,7 @@ import re
 
 import sqlite3
 import time
+
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from typing import Any
@@ -28,7 +29,7 @@ SQLITE_PATH = os.getenv(
 )
 
 # Connection retry policy (PostgreSQL only - SQLite is a local file and a
-# failure there is not transient).
+# failure there is not transient)
 MAX_RETRIES = int(os.getenv("POSTGRES_MAX_RETRIES", "5"))
 RETRY_BACKOFF_SEC = float(os.getenv("POSTGRES_RETRY_BACKOFF", "0.5"))
 CONNECT_TIMEOUT_SEC = int(os.getenv("POSTGRES_CONNECT_TIMEOUT", "10"))
@@ -39,10 +40,8 @@ _SAFE_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 # The tables this application owns - used by callers that want to check
 # whether a pipeline stage has produced its output yet.
 KNOWN_TABLES: tuple[str, ...] = (
-    "raw_telemetry",    "processed_telemetry",
-    "cross_service_pairs",  "propagation_chains",
-    "error_correlations", "anomaly_scores",
-    "failure_patterns", "scalability_metrics",
+    "raw_telemetry",    "processed_telemetry", "cross_service_pairs",  "propagation_chains",
+    "error_correlations", "anomaly_scores",  "failure_patterns", "scalability_metrics"
 )
 
 
@@ -71,7 +70,7 @@ def _connect_sqlite() -> sqlite3.Connection:
 
 
 def _connect_postgres():
-    """Connect to PostgreSQL, retrying transient failures with backoff."""
+    """Connect to PostgreSQL, retrying transient failures with backoff"""
     import psycopg2
 
     last_error: Exception | None = None
@@ -79,9 +78,9 @@ def _connect_postgres():
         try:
             return psycopg2.connect(
                 host=os.getenv("POSTGRES_HOST", "postgres"),  port=int(os.getenv("POSTGRES_PORT", "5432")),
-                user=os.getenv("POSTGRES_USER", "sparkuser"),   password=os.getenv("POSTGRES_PASSWORD", "sparkpass"),
+                user=os.getenv("POSTGRES_USER", "sparkuser"), password=os.getenv("POSTGRES_PASSWORD", "sparkpass"),
                 dbname=os.getenv("POSTGRES_DB", "microservice_analysis"),
-                connect_timeout=CONNECT_TIMEOUT_SEC,
+                connect_timeout=CONNECT_TIMEOUT_SEC
             )
         except psycopg2.OperationalError as exc:
             # OperationalError covers "not accepting connections yet"
