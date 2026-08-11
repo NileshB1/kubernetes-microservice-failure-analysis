@@ -247,9 +247,7 @@ def load_fault_labels(data_dir: str = "data"):
         for group in groups:
             for entry in group if isinstance(group, list) else []:
                 records.append(
-                    {
-                        "capture_date": capture_date,
-                        "inject_time": entry.get("inject_time"),
+                    { "capture_date": capture_date, "inject_time": entry.get("inject_time"),
                         "inject_timestamp": int(entry.get("inject_timestamp", 0) or 0),
                         "inject_pod": entry.get("inject_pod"),  "inject_type": entry.get("inject_type"),
                     }
@@ -431,8 +429,7 @@ def main(argv: list[str] | None = None):
         if not args.validate_only:
             download_dataset(
                 data_dir=args.data_dir,  kinds=tuple(args.kinds),
-                capture_dates=dates, roots=tuple(args.roots),
-                force=args.force,
+                capture_dates=dates, roots=tuple(args.roots), force=args.force
             )
             if not args.skip_fault_lists:
                 download_fault_lists(args.data_dir, capture_dates=dates)

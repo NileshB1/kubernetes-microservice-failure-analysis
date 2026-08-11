@@ -23,8 +23,7 @@ SERVICES = [
 
 FAILURE_SERVICES = ["auth-service", "payment-service", "frontend", "order-service"]
 
-PATTERN_TYPES = [
-    "cascading_failure", "error_surge", "latency_spike",
+PATTERN_TYPES = ["cascading_failure", "error_surge", "latency_spike",
     "resource_pressure", "full_failure", "resource_exhaustion", "error_resource_link"
 ]
 

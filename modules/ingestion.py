@@ -4,7 +4,7 @@
 # Main Functions:
 # - run_ingestion_pipeline() -> Acquire, upload, normalise
 # - upload_tree_to_minio() -> Uploads preserving directory structure
-# -normalise_source_in_blob() -> Spark: source in blob -> canonical in blob
+# -normalise_source_in_blob() - Spark: source in blob -> canonical in blob
 # - generate_sample_data() -> Offline fallback telemetry
 # - verify_data_in_minio() -> Checks data integrity in blob storage
 
@@ -281,17 +281,16 @@ def run_ingestion_pipeline(
     """
     Get the real source dataset into blob storage and normalise it
     """
-    logger.info("=" * 60)
+    logger.info("=" * 45)
     logger.info("MODULE 1: DATA INGESTION")
-    logger.info("=" * 60)
+    logger.info("=" * 55)
 
     if synthetic:
         return _run_synthetic_ingestion(sample_rows, data_dir, bucket, prefix)
 
     from modules.dataset_acquisition import (
         BASELINE_ROOT, FAULT_ROOT,
-        dataset_is_present, download_dataset,
-        download_fault_lists, validate_local_dataset
+        dataset_is_present, download_dataset,  download_fault_lists, validate_local_dataset
     )
 
     # Step 1:Acquire the real datase
@@ -312,7 +311,7 @@ def run_ingestion_pipeline(
     objects = upload_tree_to_minio(data_dir, bucket=bucket, prefix=SOURCE_PREFIX)
 
     # Step 3: Spark reads the source back out of blob and normalises it
-    logger.info("Step 3: Normalising source into the canonical schema (Spark) ....")
+    logger.info("Step3: Normalising source into the canonical schema (Spark) ....")
     counts = normalise_source_in_blob(bucket=bucket, prefix=prefix)
 
     sizes = verify_data_in_minio(bucket=bucket, prefix=prefix)
@@ -355,8 +354,7 @@ def normalise_source_in_blob(
 
 def _run_synthetic_ingestion(sample_rows: int, data_dir: str, bucket: str, prefix: str) -> dict:
     """Offline fallback: generate telemetry instead of acquiring it."""
-    logger.warning(
-        "Running with SYNTHETIC data. This path exists for offline demos and tests. "
+    logger.warning(f"Running with SYNTHETIC data. This path exists for offline demos and tests. "
         "the analysis results it produces are not measurements."
     )
     local_files = generate_sample_data(num_rows=sample_rows, output_dir=data_dir)
@@ -365,10 +363,9 @@ def _run_synthetic_ingestion(sample_rows: int, data_dir: str, bucket: str, prefi
 
     summary = {
         "data_source": "synthetic",  "files_ingested": len(sizes),
-        "total_bytes": sum(sizes.values()),
-        "bucket": bucket, "prefix": prefix,
+        "total_bytes": sum(sizes.values()), "bucket": bucket, "prefix": prefix
     }
-    logger.info(f"Ingestion complete: {summary}")
+    logger.info(f"#### Ingestion complete: {summary}")
     return summary
 
 
@@ -398,8 +395,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    run_ingestion_pipeline(
-        data_dir=args.data_dir, bucket=args.bucket,
+    run_ingestion_pipeline(data_dir=args.data_dir, bucket=args.bucket,
         capture_dates=tuple(args.dates) if args.dates else None,
         synthetic=args.synthetic, sample_rows=args.sample_rows,
     )
