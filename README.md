@@ -71,9 +71,9 @@ project-root/
 │   ├── local_seeder.py         # SQLite seeder with realistic sample data
 │   ├── ingestion.py            # Module 1: Data generation & MinIO upload
 │   ├── preprocessing.py        # Module 2: Spark ETL & feature engineering
-│   ├── cross_service_analysis.py  # Module 3: RQ1 — Propagation analysis
-│   ├── failure_detection.py    # Module 4: RQ2 — Anomaly detection
-│   ├── scalability_analysis.py # Module 5: RQ3 — Scaling experiments
+│   ├── cross_service_analysis.py  # Module 3: RQ1 - Propagation analysis
+│   ├── failure_detection.py    # Module 4: RQ2 - Anomaly detection
+│   ├── scalability_analysis.py # Module 5: RQ3 - Scaling experiments
 │   ├── visualization.py        # Module 6: Plots & charts
 │   ├── dashboard.py             # Streamlit interactive dashboard
 │   └── report_generator.py     # PDF report generator
@@ -95,7 +95,7 @@ project-root/
 
 | # | Module                      | Purpose                                                  | RQ       | Output                              |
 |---|-----------------------------|----------------------------------------------------------|----------|-------------------------------------|
-| 1 | `ingestion.py`              | Generate/upload sample data to MinIO blob storage        | —        | MinIO: `s3a://bucket/raw/*.csv`     |
+| 1 | `ingestion.py`              | Generate/upload sample data to MinIO blob storage        | -        | MinIO: `s3a://bucket/raw/*.csv`     |
 | 2 | `preprocessing.py`          | Spark-based cleaning, joining, feature engineering       | RQ1,2,3  | MinIO + PostgreSQL: unified Parquet |
 | 3 | `cross_service_analysis.py` | Service dependency graph, failure propagation chains     | RQ1      | PostgreSQL: `cross_service_pairs`   |
 | 4 | `failure_detection.py`      | Z-score anomaly detection, failure pattern clustering    | RQ2      | PostgreSQL: `anomaly_scores`        |
@@ -130,7 +130,7 @@ make dash-sqlite
 
 ### Mode 2: PostgreSQL Local (Lightweight)
 
-Uses Docker only for PostgreSQL. The dashboard connects to it directly — no Spark or MinIO needed.
+Uses Docker only for PostgreSQL. The dashboard connects to it directly - no Spark or MinIO needed.
 
 ```bash
 # Start PostgreSQL
@@ -158,7 +158,7 @@ python run_streamlit.py --pg-host myhost --pg-user myuser --pg-pass mypass --pg-
 
 ### Mode 3: Full Docker Pipeline (Production)
 
-Runs everything — MinIO, Spark Master + Workers, PostgreSQL, and the full 6-module pipeline.
+Runs everything - MinIO, Spark Master + Workers, PostgreSQL, and the full 6-module pipeline.
 
 **Prerequisites:** Docker & Docker Compose v2+, 8 GB RAM, 10 GB disk.
 
@@ -182,7 +182,7 @@ This starts:
 - **Spark Master** on port `8080` (Web UI)
 - **Spark Workers** connected to master
 - **PostgreSQL** on port `5432`
-- **Pipeline Runner** — executes all 6 modules automatically
+- **Pipeline Runner** - executes all 6 modules automatically
 
 The `docker-compose.override.yml` auto-merges with `docker-compose.yml` to apply smaller dev settings. To skip the override, use `-f docker-compose.yml` explicitly.
 
@@ -324,7 +324,7 @@ RQ3 (Spark scalability)
 ## Implementation Notes
 
 1. **Sample Data**: The project auto-generates realistic microservice telemetry matching the Kaggle dataset schema. If you have the real dataset, place CSV files in `./data/`.
-2. **Six Modules Only**: The project uses exactly 6 Python modules as specified — no extra microservices or unnecessary files.
+2. **Six Modules Only**: The project uses exactly 6 Python modules as specified - no extra microservices or unnecessary files.
 3. **Academically Manageable**: Each module has ~5–6 core functions with clear inputs/outputs, making it easy to understand and modify.
 4. **Distributed First**: All data processing goes through Spark DataFrames, with MinIO as the blob storage layer.
 5. **Reproducible**: Docker Compose ensures identical environments. All parameters are in `config.yaml`.
@@ -345,4 +345,4 @@ RQ3 (Spark scalability)
 
 ## License
 
-Academic project — no license required.
+Academic project - no license required.
