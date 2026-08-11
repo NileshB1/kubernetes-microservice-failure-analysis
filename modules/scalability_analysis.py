@@ -1,63 +1,27 @@
-# ============================================================
-# Module 5: Spark Scalability Analysis
-# ============================================================
-# Purpose (RQ3):
-#   "How does distributed Spark processing scale when analysing
-#    increasing volumes of Kubernetes microservice telemetry?"
-#
-#   Runs the preprocessing + failure detection pipeline against
-#   progressively larger data volumes and different Spark
-#   configurations to measure scalability characteristics.
-#
-# Inputs:
-#   - config.yaml scalability parameters
-#   - Raw telemetry from MinIO (or generated for scalability)
-#
-# Outputs:
-#   - scalability_metrics table in PostgreSQL
-#   - Scalability experiment results in MinIO (JSON/Parquet)
-#
-# Main Functions:
-#   - generate_scaled_dataset()      → Generate data at target size
-#   - run_benchmark()                → Run pipeline, record timing
-#   - run_scalability_experiments()  → Full scalability test suite
-#   - compute_scalability_metrics()  → Speed-up, efficiency, throughput
-#   - compare_worker_configs()       → Compare across executor configs
-#
-# Spark Operations Used:
-#   - Union, repartition for data scaling
-#   - Spark job metrics via SparkListener
-#   - Time measurement via Python time
-#
-# RQ Contribution:
-#   - RQ3: Provides quantitative evidence of scaling behavior
-# ============================================================
+
+#module 5- Spark Scalability Analysis
+
 
 import os
-import sys
 import time
-import random
-import logging
-from datetime import datetime, timedelta
-from typing import Optional
 
 from dotenv import load_dotenv
-from pyspark.sql import SparkSession, DataFrame, Window
+from pyspark.sql import DataFrame, SparkSession, Window
 from pyspark.sql import functions as F
 
-from modules.shared_utils import create_spark_session, load_config, write_to_postgres, setup_logging
+from modules.shared_utils import create_spark_session, load_config, setup_logging, write_to_postgres
 
 load_dotenv()
 logger = setup_logging("scalability")
 
 
-# ============================================================
+
 # Data Generation at Scale
-# ============================================================
 SERVICE_NAMES = [
     "frontend", "auth-service", "user-service", "order-service",
-    "payment-service", "inventory-service", "notification-service",
-    "shipping-service", "catalog-service", "cart-service",
+    "payment-service", "inventory-service",
+    "notification-service", "shipping-service",
+    "catalog-service", "cart-service",
 ]
 
 HTTP_METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH"]
@@ -67,45 +31,39 @@ POD_IDS = [f"pod-{i:05d}" for i in range(1, 201)]
 
 def generate_scaled_dataset(spark, target_rows: int, bucket: str) -> str:
     """
-    Generate a scaled dataset using Spark's range() for efficient parallel row generation.
-    Returns the MinIO path to the generated data.
+    Generate a scaled dataset using Spark's range() 
     """
-    logger.info(f"Generating scaled dataset: {target_rows:,} rows...")
+    logger.info(f"####Generating scaled dataset {target_rows:,} rows....")
 
     num_partitions = min(16, max(1, target_rows // 100_000))
-
-    # Use spark.range() for efficient parallelization, then add random columns
-    base_time = datetime(2024, 1, 1, 0, 0, 0)
 
     # Generate with range (distributed) and add columns via selectExpr
     df = spark.range(target_rows, numPartitions=num_partitions).select(
         F.concat(F.lit("span-"), F.lpad(F.col("id").cast("string"), 12, "0")).alias("span_id"),
-        F.concat(F.lit("trace-"), F.lpad((F.col("id") % 5000).cast("string"), 6, "0")).alias("trace_id"),
-    )
-
+        F.concat(F.lit("trace-"), F.lpad((F.col("id") % 5000).cast("string"), 6, "0")).alias("trace_id"))
     # Add service_name (randomly distributed)
     services_array = F.array([F.lit(s) for s in SERVICE_NAMES])
-    df = df.withColumn("service_name",
-        services_array.getItem((F.rand() * len(SERVICE_NAMES)).cast("int")))
+    df = df.withColumn("service_name", services_array.getItem((F.rand() * len(SERVICE_NAMES)).cast("int")))
 
     # Add numeric columns with random distributions
-    df = df.withColumn("response_time_ms",
-        F.abs(F.round(F.rand() * 300 + F.randn() * 60 + 30, 2)))
-    df = df.withColumn("status_code",
-        F.when(F.rand() < 0.08, F.array([F.lit(500), F.lit(502), F.lit(503), F.lit(504)])
-               .getItem((F.rand() * 4).cast("int")))
-        .otherwise(F.lit(200)))
-    df = df.withColumn("is_failure",
-        F.when(F.col("status_code") >= 500, 1).otherwise(0))
-    df = df.withColumn("pod_id",
-        F.concat(F.lit("pod-"), F.lpad((F.rand() * 200).cast("int").cast("string"), 5, "0")))
-    df = df.withColumn("cpu_usage_mcores",
-        F.abs(F.round(F.rand() * 1000 + F.randn() * 300 + 100, 2)))
-    df = df.withColumn("memory_usage_mb",
-        F.abs(F.round(F.rand() * 2000 + F.randn() * 500 + 200, 2)))
+    df = df.withColumn("response_time_ms", F.abs(F.round(F.rand() * 300 + F.randn() * 60 + 30, 2)))
+    df = df.withColumn(
+        "status_code",
+        F.when(F.rand() < 0.08,
+            F.array([F.lit(500), F.lit(502), F.lit(503), F.lit(504)]).getItem((F.rand() * 4).cast("int")),
+        ).otherwise(F.lit(200)),
+    )
+    df = df.withColumn("is_failure", F.when(F.col("status_code") >= 500, 1).otherwise(0))
+    df = df.withColumn(
+        "pod_id", F.concat(F.lit("pod-"), F.lpad((F.rand() * 200).cast("int").cast("string"), 5, "0"))
+    )
+    df = df.withColumn("cpu_usage_mcores", F.abs(F.round(F.rand() * 1000 + F.randn() * 300 + 100, 2)))
+    df = df.withColumn("memory_usage_mb", F.abs(F.round(F.rand() * 2000 + F.randn() * 500 + 200, 2)))
     df = df.withColumn("start_time",
-        (F.lit("2024-01-01 00:00:00").cast("timestamp") +
-         F.expr(f"make_interval(0, 0, 0, 0, 0, 0, cast(rand() * 86400 as int))")).cast("string"))
+        (F.lit("2024-01-01 00:00:00").cast("timestamp")
+            + F.expr("make_interval(0, 0, 0, 0, 0, 0, cast(rand() * 86400 as int))")
+        ).cast("string"),
+    )
 
     df = df.repartition(num_partitions)
 
@@ -114,107 +72,83 @@ def generate_scaled_dataset(spark, target_rows: int, bucket: str) -> str:
     df.write.mode("overwrite").parquet(output_path)
 
     actual_count = spark.read.parquet(output_path).count()
-    logger.info(f"  ✓ Written {actual_count:,} rows to {output_path}")
+    logger.info(f"  [ok] Written {actual_count:,} rows to {output_path}")
     return output_path
 
 
-# ============================================================
-# Benchmark Runner
-# ============================================================
+#benchmark Runner
+
 def run_benchmark(
-    spark: SparkSession,
-    df: DataFrame,
-    label: str,
-) -> dict:
+    spark: SparkSession, df: DataFrame,
+    label: str):
     """
     Run a subset of the analysis pipeline against a DataFrame and
-    record timing for key Spark operations.
-
-    Operations benchmarked:
-      1. GroupBy + aggregation (error rate per service)
-      2. Window function (lag-based propagation detection)
-      3. Join operation (service dependency graph)
-      4. Full shuffle (repartition)
+    record timing for key Spark operations
     """
-    logger.info(f"  Benchmarking [{label}] ({df.count():,} rows)...")
+    # Count once: df.count() is a full pass, and the benchmark below is
+    # what we actually want to measure.....
+    input_rows = df.count()
+    logger.info(f"  Benchmarking [{label}] ({input_rows:,} rows)...")
 
-    results = {"label": label, "input_rows": df.count()}
+    results = {"label": label, "input_rows": input_rows}
 
     # Operation 1: GroupBy + Aggregation
     t0 = time.time()
-    agg_result = (
+    _ = (
         df.groupBy("service_name")
-        .agg(
-            F.count("*").alias("total"),
-            F.sum("is_failure").alias("errors"),
-            F.avg("response_time_ms").alias("avg_latency"),
-            F.stddev("response_time_ms").alias("std_latency"),
-        )
-        .collect()
+        .agg(F.count("*").alias("total"),  F.sum("is_failure").alias("errors"),
+            F.avg("response_time_ms").alias("avg_latency"), F.stddev("response_time_ms").alias("std_latency")
+        ).collect()
     )
     results["groupby_agg_sec"] = round(time.time() - t0, 3)
     logger.info(f"    GroupBy+Agg:  {results['groupby_agg_sec']:.3f}s")
 
-    # Operation 2: Window Function (lag)
+    #operation 2=> Window Function (lag)
     t0 = time.time()
     window_spec = Window.partitionBy("trace_id").orderBy("start_time")
-    window_result = (
+    _ = (
         df.withColumn("next_service", F.lead("service_name", 1).over(window_spec))
-        .filter(F.col("next_service").isNotNull())
-        .count()
+        .filter(F.col("next_service").isNotNull()).count()
     )
     results["window_fn_sec"] = round(time.time() - t0, 3)
     logger.info(f"    Window fn:    {results['window_fn_sec']:.3f}s")
 
-    # Operation 3: Join (bounded: join sample against full dataset)
+    # Operation 3: Join bounded
     t0 = time.time()
     sample = df.sample(fraction=0.01, seed=42).select("trace_id", "service_name")
-    joined = (
-        df.alias("full")
-        .join(sample.alias("s"), F.col("full.trace_id") == F.col("s.trace_id"), "inner")
-        .filter(F.col("full.service_name") != F.col("s.service_name"))
-        .count()
+    _ = (
+        df.alias("full").join(sample.alias("s"), F.col("full.trace_id") == F.col("s.trace_id"), "inner")
+        .filter(F.col("full.service_name") != F.col("s.service_name")).count()
     )
     results["join_sec"] = round(time.time() - t0, 3)
-    logger.info(f"    Join:         {results['join_sec']:.3f}s")
+    logger.info(f"Join: {results['join_sec']:.3f}s")
 
-    # Operation 4: Full shuffle (repartition)
+    #operation 4: Full shuffle
     t0 = time.time()
-    shuffled = df.repartition(16, "service_name").count()
+    _ = df.repartition(16, "service_name").count()
     results["shuffle_sec"] = round(time.time() - t0, 3)
-    logger.info(f"    Shuffle:      {results['shuffle_sec']:.3f}s")
+    logger.info(f"Shuffle:  {results['shuffle_sec']:.3f}s")
 
     # Total
-    results["total_sec"] = round(
-        results["groupby_agg_sec"] + results["window_fn_sec"] +
-        results["join_sec"] + results["shuffle_sec"], 3
-    )
-    logger.info(f"    TOTAL:        {results['total_sec']:.3f}s")
+    results["total_sec"] = round(results["groupby_agg_sec"] + results["window_fn_sec"] + results["join_sec"] + results["shuffle_sec"],
+        3)
+    logger.info(f"TOTAL: {results['total_sec']:.3f}s")
 
     return results
 
 
-# ============================================================
+
 # Scalability Experiment Suite
-# ============================================================
-def run_scalability_experiments(
-    bucket: str = "microservice-logs",
-    data_sizes: Optional[list[int]] = None,
-    repetitions: int = 1,
-) -> list[dict]:
-    """
-    Run the full scalability experiment suite.
 
-    For each data size:
-      1. Generate (or reuse) a scaled dataset
-      2. Run the benchmark pipeline N times
-      3. Record all metrics
-
-    Returns list of dict results for PostgreSQL.
+def run_scalability_experiments(bucket: str = "microservice-logs",  data_sizes: list[int] | None = None,
+    repetitions: int = 1
+):
     """
-    logger.info("=" * 60)
-    logger.info("MODULE 5: SPARK SCALABILITY ANALYSIS (RQ3)")
-    logger.info("=" * 60)
+    Run the full scalability experiment suite
+    """
+    logger.info("=" * 45)
+    logger.info("MODULE 5=> SPARK SCALABILITY ANALYSIS (RQ3......)")
+    logger.info("=" * 55)
 
     config = load_config()
     cfg = config["scalability"]
@@ -234,16 +168,16 @@ def run_scalability_experiments(
     all_results = []
 
     for size in data_sizes:
-        logger.info(f"\n{'=' * 40}")
+        logger.info(f"\n{'=' * 45}")
         logger.info(f"Data Size: {size:,} rows")
-        logger.info(f"{'=' * 40}")
+        logger.info(f"{'=' * 45}")
 
         # Generate data
         data_path = generate_scaled_dataset(spark, size, bucket)
 
         # Run benchmarks
         for rep in range(repetitions):
-            logger.info(f"  Repetition {rep + 1}/{repetitions}...")
+            logger.info(f"  Repetition {rep + 1}/{repetitions}....")
             df = spark.read.parquet(data_path)
             result = run_benchmark(spark, df, f"{size:,}_r{rep+1}")
             result["data_size"] = size
@@ -266,22 +200,17 @@ def run_scalability_experiments(
                 r["baseline_size"] = all_results[0]["data_size"]
                 r["baseline_time_sec"] = baseline
 
-    logger.info(f"\nScalability experiments complete: {len(all_results)} results.")
+    logger.info(f"\nScalability experiments complete: {len(all_results)} results.....")
     return all_results
 
 
-# ============================================================
-# Scalability Metrics Computation
-# ============================================================
+
+#scalability Metrics Computation
 def compute_scalability_metrics(results: list[dict]) -> dict:
     """
-    Aggregate scalability results into RQ3 summary metrics:
-
-    - speed-up (S = T_small / T_large)
-    - scalability efficiency (E = S / (data ratio))
-    - throughput trend
+    Aggregate scalability results into RQ3 summary metrics
     """
-    logger.info("Computing scalability metrics for RQ3...")
+    logger.info("#### Computing scalability metrics for RQ3....")
 
     if not results:
         return {}
@@ -298,11 +227,9 @@ def compute_scalability_metrics(results: list[dict]) -> dict:
     baseline_total = sum(r["total_sec"] for r in by_size[sizes[0]]) / len(by_size[sizes[0]])
 
     metrics = {
-        "num_data_sizes": len(sizes),
-        "num_repetitions_per_size": len(results) // len(sizes),
-        "baseline_rows": sizes[0],
-        "baseline_total_sec": round(baseline_total, 3),
-        "scaling_results": [],
+        "num_data_sizes": len(sizes), "num_repetitions_per_size": len(results) // len(sizes),
+        "baseline_rows": sizes[0],  "baseline_total_sec": round(baseline_total, 3),
+        "scaling_results": []
     }
 
     for size in sizes:
@@ -313,14 +240,14 @@ def compute_scalability_metrics(results: list[dict]) -> dict:
         speedup = baseline_total / avg_total if avg_total > 0 else 0
         efficiency = speedup / data_ratio if data_ratio > 0 else 0
 
-        metrics["scaling_results"].append({
-            "data_size": size,
-            "avg_total_time_sec": round(avg_total, 3),
-            "avg_throughput_rows_per_sec": round(avg_throughput, 1),
-            "data_ratio": round(data_ratio, 2),
-            "speedup": round(speedup, 3),
-            "scalability_efficiency": round(efficiency, 3),
-        })
+        metrics["scaling_results"].append(
+            {
+                "data_size": size, "avg_total_time_sec": round(avg_total, 3),
+                "avg_throughput_rows_per_sec": round(avg_throughput, 1),
+                "data_ratio": round(data_ratio, 2), "speedup": round(speedup, 3),
+                "scalability_efficiency": round(efficiency, 3),
+            }
+        )
 
     # Check if sub-linear scaling
     largest = metrics["scaling_results"][-1]
@@ -333,17 +260,18 @@ def compute_scalability_metrics(results: list[dict]) -> dict:
 
     logger.info(f"Scaling characteristic: {metrics['scaling_characteristic']}")
     for sr in metrics["scaling_results"]:
-        logger.info(f"  {sr['data_size']:>12,} rows | {sr['avg_total_time_sec']:>8.3f}s | "
-                     f"speedup={sr['speedup']:.3f} | efficiency={sr['scalability_efficiency']:.3f}")
+        logger.info(f"{sr['data_size']:>12,} rows | {sr['avg_total_time_sec']:>8.3f}s | "
+            f"speedup={sr['speedup']:.3f} | efficiency={sr['scalability_efficiency']:.3f}")
 
     return metrics
 
 
-# ============================================================
-# Write Results
-# ============================================================
-def write_scalability_results(spark_session, results: list[dict], table_name: str, mode: str = "overwrite") -> None:
-    """Write list of dicts as a Spark DataFrame to PostgreSQL."""
+
+#write Results
+def write_scalability_results(
+    spark_session, results: list[dict], table_name: str, mode: str = "overwrite"
+) -> None:
+    """Write list of dicts as a Spark DataFrame to PostgreSQL"""
     if not results:
         logger.warning(f"No results to write for {table_name}")
         return
@@ -352,30 +280,17 @@ def write_scalability_results(spark_session, results: list[dict], table_name: st
     write_to_postgres(df, table_name, mode=mode)
 
 
-# ============================================================
-# Main Entry Point
-# ============================================================
+
+#main
 def run_scalability_analysis(
     bucket: str = "microservice-logs",
-    data_sizes: Optional[list[int]] = None,
+    data_sizes: list[int] | None = None,
     repetitions: int = 1,
 ) -> dict:
     """
-    Full scalability analysis pipeline (RQ3).
-
-    Args:
-        bucket: MinIO bucket name.
-        data_sizes: List of row counts to test (default from config).
-        repetitions: Number of runs per size.
-
-    Returns dict with scalability metrics.
-    """
+    Full scalability analysis pipeline (RQ3)"""
     # Run experiments (creates its own SparkSession internally)
-    results = run_scalability_experiments(
-        bucket=bucket,
-        data_sizes=data_sizes,
-        repetitions=repetitions,
-    )
+    results = run_scalability_experiments(bucket=bucket, data_sizes=data_sizes, repetitions=repetitions)
 
     # Create session only for writing results
     spark = create_spark_session()
@@ -386,7 +301,7 @@ def run_scalability_analysis(
     # Write raw results to PostgreSQL
     write_scalability_results(spark, results, "scalability_metrics")
 
-    logger.info("Scalability analysis complete.")
+    logger.info("Scalability analysis complete......ha ha")
     return metrics
 
 
