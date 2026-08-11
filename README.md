@@ -1,6 +1,6 @@
 # Distributed Analysis of Kubernetes Microservice Logs for Failure Detection
 
-**Academic Project — Data Intensive & Scalable Systems Module**
+**Academic Project - Data Intensive & Scalable Systems Module**
 
 A fully Dockerized, end-to-end pipeline using Apache Spark to analyse microservice telemetry
 for cross-service failure propagation, anomaly detection, and scalability evaluation.
@@ -12,8 +12,8 @@ for cross-service failure propagation, anomaly detection, and scalability evalua
 | RQ  | Question                                                                     | Module                        |
 |-----|------------------------------------------------------------------------------|-------------------------------|
 | RQ1 | How can distributed analysis identify cross-service failure propagation?     | `cross_service_analysis.py`   |
-| RQ2 | How effectively can distributed processing identify abnormal failure patterns? | `failure_detection.py`        |
-| RQ3 | How does distributed Spark processing scale with increasing data volumes?   | `scalability_analysis.py`     |
+| RQ2 | How effectively can distributed processing identify abnormal failure patterns? | `failure_detection.py`      |
+| RQ3 | How does distributed Spark processing scale with increasing data volumes?   | `scalability_analysis.py`      |
 
 ---
 
@@ -77,14 +77,6 @@ project-root/
 │   ├── visualization.py        # Module 6: Plots & charts
 │   ├── dashboard.py             # Streamlit interactive dashboard
 │   └── report_generator.py     # PDF report generator
-├── tests/
-│   ├── test_ingestion.py
-│   ├── test_preprocessing.py
-│   ├── test_cross_service_analysis.py
-│   ├── test_failure_detection.py
-│   ├── test_scalability_analysis.py
-│   ├── test_local_seeder.py    # 62 tests for SQLite seeder
-│   └── test_db_adapter.py      # 40 tests for DB adapter routing
 ├── scripts/
 │   ├── entrypoint.sh           # Docker entrypoint
 │   ├── run_pipeline.sh         # End-to-end pipeline runner
@@ -112,11 +104,11 @@ project-root/
 
 ---
 
-## Quick Start — Choose Your Launch Mode
+## Quick Start - Choose Your Launch Mode
 
 Three ways to run the dashboard, from lightest to heaviest:
 
-### 🥇 Mode 1: SQLite Local (Zero Dependencies)
+### Mode 1: SQLite Local (Zero Dependencies)
 
 No Docker, no PostgreSQL, no Spark. Everything runs in-process with a SQLite database.
 
@@ -136,7 +128,7 @@ make dash-sqlite
 
 ---
 
-### 🥈 Mode 2: PostgreSQL Local (Lightweight)
+### Mode 2: PostgreSQL Local (Lightweight)
 
 Uses Docker only for PostgreSQL. The dashboard connects to it directly — no Spark or MinIO needed.
 
@@ -164,7 +156,7 @@ python run_streamlit.py --pg-host myhost --pg-user myuser --pg-pass mypass --pg-
 
 ---
 
-### 🥉 Mode 3: Full Docker Pipeline (Production)
+### Mode 3: Full Docker Pipeline (Production)
 
 Runs everything — MinIO, Spark Master + Workers, PostgreSQL, and the full 6-module pipeline.
 
