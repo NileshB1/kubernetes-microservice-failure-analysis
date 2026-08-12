@@ -21,7 +21,7 @@ for cross-service failure propagation, anomaly detection, and scalability evalua
 
 ```
 ┌──────────┐     ┌─────────────────┐     ┌────────────────────────────┐
-│  Dataset │ ──► │  MinIO (Blob)   │ ──► │  Apache Spark Cluster      │
+│  Dataset │ --> │  MinIO (Blob)   │ --> │  Apache Spark Cluster      │
 │  (CSV)   │     │  s3a://bucket/  │     │  ┌──────────┬────────────┐ │
 └──────────┘     └─────────────────┘     │  │  Master  │ Worker × N │ │
                                          │  └──────────┴────────────┘ │
@@ -29,10 +29,10 @@ for cross-service failure propagation, anomaly detection, and scalability evalua
                                                      │
                     ┌────────────────────────────────┼──────────────────────────────┐
                     │                                ▼                              │
-                    │  ┌──────────────────┐  ┌──────────────────┐                  │
-                    │  │  Preprocessing   │  │ Cross-Service    │                  │
-                    │  │  (Clean, Join,   │─►│ Analysis (RQ1)   │                  │
-                    │  │   Features)      │  └────────┬─────────┘                  │
+                    │  ┌──────────────────┐   ┌──────────────────┐                  │
+                    │  │  Preprocessing   │   │ Cross-Service    │                  │
+                    │  │  (Clean, Join,   │-->│ Analysis (RQ1)   │                  │
+                    │  │   Features)      │   └────────┬─────────┘                  │
                     │  └──────────────────┘           │                            │
                     │                                 ▼                            │
                     │                    ┌──────────────────┐                      │
