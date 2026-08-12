@@ -1,15 +1,13 @@
-# ============================================================
+
 # Placeholder Plot Generator
-# ============================================================
-# Generates sample PNG images in output/ so the dashboard
-# and README have fallback images when no pipeline has run.
-# ============================================================
 
 import os
-import sys
+
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+
 import numpy as np
 
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "output")
@@ -27,8 +25,11 @@ def _save(fig, name):
 
 def make_rq1_propagation_heatmap():
     """Placeholder: cross-service propagation heatmap."""
-    services = ["frontend", "auth-svc", "user-svc", "order-svc", "payment-svc", "inventory-svc",
-                "notif-svc", "shipping-svc", "catalog-svc", "cart-svc"]
+    services = [
+        "frontend", "auth-svc", "user-svc", "order-svc",
+        "payment-svc", "inventory-svc",  "notif-svc",   "shipping-svc",
+        "catalog-svc", "cart-svc",
+    ]
     n = len(services)
     np.random.seed(42)
     data = np.random.rand(n, n) * 0.4
@@ -59,7 +60,7 @@ def make_rq2_anomaly_timeseries():
     np.random.seed(7)
     t = np.arange(24)
 
-    for i, (ax, svc) in enumerate(zip(axes.flatten(), services)):
+    for ax, svc in zip(axes.flatten(), services, strict=False):
         normal = np.random.normal(0.05, 0.02, 24)
         anomaly_idx = np.random.choice(24, size=3, replace=False)
         for idx in anomaly_idx:
@@ -77,16 +78,18 @@ def make_rq2_anomaly_timeseries():
 
 def make_rq2_failure_patterns():
     """Placeholder: failure pattern distribution bar chart."""
-    patterns = ["cascading_failure", "error_surge", "latency_spike",
-                "resource_pressure", "full_failure", "resource_exhaustion"]
+    patterns = [
+        "cascading_failure",  "error_surge",
+        "latency_spike",  "resource_pressure",
+        "full_failure",  "resource_exhaustion",
+    ]
     counts = [145, 98, 72, 53, 28, 19]
     colors = ["#fc8d62", "#66c2a5", "#8da0cb", "#e78ac3", "#a6d854", "#ffd92f"]
 
     fig, ax = plt.subplots(figsize=(10, 5))
     bars = ax.barh(patterns, counts, color=colors, edgecolor="white", height=0.6)
-    for bar, val in zip(bars, counts):
-        ax.text(bar.get_width() + 2, bar.get_y() + bar.get_height() / 2,
-                str(val), va="center", fontsize=10)
+    for bar, val in zip(bars, counts, strict=False):
+        ax.text(bar.get_width() + 2, bar.get_y() + bar.get_height() / 2, str(val), va="center", fontsize=10)
     ax.set_title("RQ2: Failure Pattern Type Distribution", fontweight="bold", fontsize=14)
     ax.set_xlabel("Occurrences")
     ax.invert_yaxis()
@@ -98,7 +101,7 @@ def make_rq3_scaling_curves():
     """Placeholder: execution time and throughput scaling."""
     sizes = [1e5, 5e5, 1e6, 5e6, 1e7]
     times = [2.3, 9.8, 21.5, 98.0, 210.0]
-    throughput = [s / t for s, t in zip(sizes, times)]
+    throughput = [s / t for s, t in zip(sizes, times, strict=False)]
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
 
@@ -107,7 +110,7 @@ def make_rq3_scaling_curves():
     ax1.set_ylabel("Time (s)")
     ax1.set_title("Execution Time vs Data Size")
     ax1.grid(True, alpha=0.3, which="both")
-    for s, t in zip(sizes, times):
+    for s, t in zip(sizes, times, strict=False):
         ax1.annotate(f"{t}s", (s, t), textcoords="offset points", xytext=(0, 10), fontsize=9)
 
     ax2.semilogx(sizes, throughput, "o-", color="#d7191c", linewidth=2.5, markersize=8)
@@ -115,7 +118,7 @@ def make_rq3_scaling_curves():
     ax2.set_ylabel("Throughput (rows/s)")
     ax2.set_title("Throughput Scaling")
     ax2.grid(True, alpha=0.3, which="both")
-    for s, tp in zip(sizes, throughput):
+    for s, tp in zip(sizes, throughput, strict=False):
         ax2.annotate(f"{tp:,.0f}", (s, tp), textcoords="offset points", xytext=(0, 10), fontsize=9)
 
     fig.suptitle("RQ3: Spark Scalability Analysis", fontweight="bold", fontsize=14)
@@ -132,7 +135,7 @@ def make_rq3_efficiency():
     fig, ax1 = plt.subplots(figsize=(9, 5))
     ax1.plot(ratios, speedup, "o-", color="#2c7bb6", linewidth=2.5, markersize=10, label="Actual Speed-up")
     ax1.plot(ratios, ratios, "--", color="gray", linewidth=1.5, label="Ideal Linear")
-    ax1.set_xlabel("Data Size Ratio (× baseline)")
+    ax1.set_xlabel("Data Size Ratio (x baseline)")
     ax1.set_ylabel("Speed-up", color="#2c7bb6")
     ax1.tick_params(axis="y", labelcolor="#2c7bb6")
 
@@ -156,18 +159,22 @@ def make_rq3_efficiency():
 def make_dashboard_summary():
     """Placeholder: combined summary dashboard."""
     fig, axes = plt.subplots(2, 3, figsize=(18, 12))
-    fig.suptitle("Dashboard Summary — Placeholder", fontweight="bold", fontsize=18)
+    fig.suptitle("Dashboard Summary - Placeholder", fontweight="bold", fontsize=18)
 
     # Subplot 1
     ax = axes[0, 0]
-    ax.barh(["frontend→auth", "auth→user", "user→payment", "payment→inventory"],
-            [0.42, 0.35, 0.28, 0.19], color=plt.cm.YlOrRd([0.9, 0.7, 0.5, 0.3]))
+    ax.barh(
+        ["frontend->auth", "auth->user", "user->payment", "payment->inventory"],
+        [0.42, 0.35, 0.28, 0.19],
+        color=plt.cm.YlOrRd([0.9, 0.7, 0.5, 0.3]),
+    )
     ax.set_title("RQ1: Propagation Paths")
 
     # Subplot 2
     ax = axes[0, 1]
-    ax.pie([82, 18], labels=["Normal", "Anomalous"], autopct="%1.1f%%",
-           colors=["#66c2a5", "#fc8d62"], explode=(0, 0.05))
+    ax.pie(
+        [82, 18], labels=["Normal", "Anomalous"],
+        autopct="%1.1f%%",  colors=["#66c2a5", "#fc8d62"],   explode=(0, 0.05) )
     ax.set_title("RQ2: Anomaly Rate")
 
     # Subplot 3
@@ -188,26 +195,31 @@ def make_dashboard_summary():
     # Subplot 5
     ax = axes[1, 1]
     ax.axis("off")
-    ax.text(0.5, 0.5, "Pipeline Ready\n\nRun the pipeline to see\nlive results.", ha="center", va="center",
-            fontsize=14, transform=ax.transAxes)
+    ax.text(
+        0.5, 0.5,
+        "Pipeline Ready\n\nRun the pipeline to see\nlive results.",
+        ha="center", va="center", fontsize=14, transform=ax.transAxes,
+    )
 
     # Subplot 6
     ax = axes[1, 2]
     ax.axis("off")
-    ax.text(0.5, 0.5, "Dataset → MinIO → Spark → Postgres → Dashboard",
-            ha="center", va="center", fontsize=12, transform=ax.transAxes,
-            fontfamily="monospace")
+    ax.text(
+        0.5,   0.5,  "Dataset -> MinIO -> Spark -> Postgres -> Dashboard",
+        ha="center", va="center",  fontsize=12,   transform=ax.transAxes,
+        fontfamily="monospace"
+    )
 
     fig.tight_layout()
     _save(fig, "dashboard_summary.png")
 
-
+#main
 if __name__ == "__main__":
-    print("Generating placeholder plots...")
+    print("Generating placeholder plots....")
     make_rq1_propagation_heatmap()
     make_rq2_anomaly_timeseries()
     make_rq2_failure_patterns()
     make_rq3_scaling_curves()
     make_rq3_efficiency()
     make_dashboard_summary()
-    print(f"\nDone — {len(os.listdir(OUTPUT_DIR))} files in {OUTPUT_DIR}")
+    print(f"\n Done  {len(os.listdir(OUTPUT_DIR))} files in {OUTPUT_DIR}")
