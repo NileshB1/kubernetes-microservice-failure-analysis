@@ -1,15 +1,6 @@
-# ============================================================
+
 # Streamlit Dashboard - Entry Point
-# ============================================================
-# Run:
-#   streamlit run modules/dashboard.py
-#   python run_streamlit.py --local --browser     (SQLite demo mode)
-#
-# This file stays thin on purpose: page config, the shared sidebar, and
-# navigation. Each page owns its own layout and queries under
-# modules/ui/pages/, and every chart draws from the single validated
-# palette in modules/ui/theme.py.
-# ============================================================
+
 
 from __future__ import annotations
 
@@ -19,8 +10,7 @@ from pathlib import Path
 import streamlit as st
 
 # Allow `streamlit run modules/dashboard.py` from a checkout that has not
-# been pip-installed: Streamlit puts the script's own directory on
-# sys.path, not the project root.
+# been pip-installed
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
@@ -61,8 +51,6 @@ def _sidebar() -> tuple[str, tuple[str, ...]]:
     """
     Render the sidebar and return the chosen page and service filter.
 
-    The service filter lives here, above everything it scopes, rather than
-    inside individual cards - one control, one slice, every page consistent.
     """
     with st.sidebar:
         st.markdown(
@@ -139,6 +127,6 @@ def main() -> None:
         "Data Intensive & Scalable Systems"
     )
 
-
+#main
 if __name__ == "__main__":
     main()

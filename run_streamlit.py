@@ -1,33 +1,22 @@
 #!/usr/bin/env python3
-# ============================================================
-# run_streamlit.py — End-to-End Streamlit Launcher
-# ============================================================
-# Usage:
-#   python run_streamlit.py                    # default: port 8501
-#   python run_streamlit.py --port 8502        # custom port
-#   python run_streamlit.py --seed-only        # only seed data, don't launch UI
-#   python run_streamlit.py --browser          # auto-open browser
+
+# run_streamlit.py - End-to-End Streamlit Launcher
+
+# script usage:
+# python run_streamlit.py  # the default port 8501
+#  python run_streamlit.py --port 8502 # custom port
+# python run_streamlit.py --seed-only   # only seed data, don't launch UI
+# python run_streamlit.py --browser   # auto-open browser
 #
-# What it does:
-#   1. Checks connectivity to PostgreSQL
-#   2. Seeds sample telemetry + analysis data into PostgreSQL
-#      (bypasses Spark/MinIO — purely for dashboard demo)
-#   3. Generates placeholder plots in output/
-#   4. Launches streamlit run modules/dashboard.py
-#
-# Requirements:
-#   - PostgreSQL running (local or Docker)
-#   - Python packages: streamlit, psycopg2-binary, numpy, etc.
-#   - Ready in ~10 seconds with sample data
-# ============================================================
 
 import argparse
+import contextlib
 import logging
 import os
+
 import random
 import subprocess
 import sys
-import time
 from datetime import datetime, timedelta
 
 from dotenv import load_dotenv
@@ -35,6 +24,12 @@ from dotenv import load_dotenv
 # Add project root to path so modules/ is importable
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, PROJECT_ROOT)
+
+# Seeder output contains check marks and arrows
+for _stream in (sys.stdout, sys.stderr):
+    # Not a real stream? Then there is nothing to reconfigure.
+    with contextlib.suppress(AttributeError, OSError, ValueError):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -44,9 +39,9 @@ logging.basicConfig(
 logger = logging.getLogger("run_streamlit")
 
 
-# ============================================================
-# Colour helpers for terminal output
-# ============================================================
+
+#colour helpers for terminal output
+
 GREEN = "\033[92m"
 YELLOW = "\033[93m"
 RED = "\033[91m"
@@ -57,140 +52,97 @@ BOLD = "\033[1m"
 
 def banner():
     print()
-    print(f"{CYAN}{'=' * 60}{RESET}")
-    print(f"{CYAN}  K8s Microservice Failure Analysis — Streamlit Dashboard{RESET}")
-    print(f"{CYAN}{'=' * 60}{RESET}")
+    print(f"{CYAN}{'=' * 50}{RESET}")
+    print(f"{CYAN}  K8s Microservice Failure Analysis - Streamlit Dashboard{RESET}")
+    print(f"{CYAN}{'=' * 50}{RESET}")
     print()
 
 
-# ============================================================
+
 # PostgreSQL Connection Check
-# ============================================================
+
 def check_postgres(host, port, user, password, dbname):
     """Try to connect to PostgreSQL; return True if successful."""
     try:
         import psycopg2
 
-        conn = psycopg2.connect(
-            host=host,
-            port=port,
-            user=user,
-            password=password,
-            dbname=dbname,
-        )
+        conn = psycopg2.connect(host=host, port=port, user=user,
+            password=password, dbname=dbname)
         conn.close()
         return True
     except Exception as e:
-        logger.warning(f"PostgreSQL not reachable at {host}:{port}: {e}")
+        logger.warning(f"Exception in PostgreSQL, details: {host}:{port}: {e}")
         return False
 
 
-# ============================================================
-# Schema Initialisation (CREATE TABLE IF NOT EXISTS)
-# ============================================================
+#schema Initialisation (CREATE TABLE IF NOT EXISTS)
+
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS processed_telemetry (
-    id              SERIAL PRIMARY KEY,
-    trace_id        VARCHAR(64),
-    service_name    VARCHAR(128),
-    span_id         VARCHAR(64),
-    parent_span_id  VARCHAR(64),
-    namespace       VARCHAR(64),
-    pod_id          VARCHAR(64),
-    node_id         VARCHAR(64),
-    response_time_ms DOUBLE PRECISION,
-    wait_time_ms    DOUBLE PRECISION,
-    processing_time_ms DOUBLE PRECISION,
-    network_latency_ms DOUBLE PRECISION,
-    start_time_ts   TIMESTAMP,
-    end_time_ts     TIMESTAMP,
-    duration_ms     DOUBLE PRECISION,
-    http_method     VARCHAR(16),
-    endpoint        VARCHAR(256),
-    status_code     INTEGER,
-    error_message   TEXT,
-    is_failure      INTEGER,
-    is_latency_spike INTEGER,
-    latency_bucket  VARCHAR(16),
-    error_category  VARCHAR(32),
-    hour_of_day     INTEGER,
-    cpu_usage_mcores DOUBLE PRECISION,
-    memory_usage_mb DOUBLE PRECISION,
-    cpu_memory_ratio DOUBLE PRECISION,
-    processed_at    TIMESTAMP DEFAULT NOW()
+    id  SERIAL PRIMARY KEY,
+    trace_id VARCHAR(64), service_name VARCHAR(128),
+    span_id  VARCHAR(64), parent_span_id  VARCHAR(64),
+    namespace VARCHAR(64), pod_id VARCHAR(64),
+    node_id  VARCHAR(64), response_time_ms DOUBLE PRECISION,
+    wait_time_ms  DOUBLE PRECISION, processing_time_ms DOUBLE PRECISION,
+    network_latency_ms DOUBLE PRECISION, start_time_ts TIMESTAMP,
+    end_time_ts TIMESTAMP, duration_ms  DOUBLE PRECISION, http_method  VARCHAR(16),
+    endpoint  VARCHAR(256), status_code  INTEGER,
+    error_message TEXT, is_failure  INTEGER, is_latency_spike INTEGER,
+    latency_bucket  VARCHAR(16), error_category  VARCHAR(32), hour_of_day INTEGER,
+    cpu_usage_mcores DOUBLE PRECISION, memory_usage_mb DOUBLE PRECISION,
+    cpu_memory_ratio DOUBLE PRECISION, processed_at TIMESTAMP DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS cross_service_pairs (
-    id                SERIAL PRIMARY KEY,
-    caller_service    VARCHAR(128),
-    callee_service    VARCHAR(128),
-    call_count        BIGINT,
-    caller_error_count BIGINT,
-    callee_error_count BIGINT,
-    co_failure_count  BIGINT,
-    avg_callee_latency_ms DOUBLE PRECISION,
-    propagation_score DOUBLE PRECISION,
-    analyzed_at       TIMESTAMP DEFAULT NOW()
+    id SERIAL PRIMARY KEY,
+    caller_service  VARCHAR(128), callee_service  VARCHAR(128),
+    call_count BIGINT, caller_error_count BIGINT,
+    callee_error_count BIGINT,  co_failure_count  BIGINT,
+    avg_callee_latency_ms DOUBLE PRECISION, propagation_score DOUBLE PRECISION,
+    analyzed_at TIMESTAMP DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS propagation_chains (
-    id                SERIAL PRIMARY KEY,
-    trace_id          VARCHAR(64),
-    source_service    VARCHAR(128),
-    target_service    VARCHAR(128),
-    source_timestamp  TIMESTAMP,
-    target_timestamp  TIMESTAMP,
-    propagation_lag_sec DOUBLE PRECISION,
-    propagation_depth INTEGER,
-    detected_at       TIMESTAMP DEFAULT NOW()
+    id  SERIAL PRIMARY KEY,
+    trace_id  VARCHAR(64),source_service    VARCHAR(128),
+    target_service VARCHAR(128), source_timestamp  TIMESTAMP,
+    target_timestamp  TIMESTAMP, propagation_lag_sec DOUBLE PRECISION,
+    propagation_depth INTEGER, detected_at TIMESTAMP DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS error_correlations (
-    id                SERIAL PRIMARY KEY,
-    service_a         VARCHAR(128),
-    service_b         VARCHAR(128),
-    error_correlation DOUBLE PRECISION,
-    sample_size       BIGINT,
-    computed_at       TIMESTAMP DEFAULT NOW()
+    id  SERIAL PRIMARY KEY, service_a  VARCHAR(128),
+    service_b VARCHAR(128), error_correlation DOUBLE PRECISION,
+    sample_size BIGINT, computed_at TIMESTAMP DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS anomaly_scores (
-    id                SERIAL PRIMARY KEY,
-    service_name      VARCHAR(128),
-    time_bucket       TIMESTAMP,
-    is_anomaly_error  INTEGER,
-    is_anomaly_latency INTEGER,
-    is_anomaly_resource INTEGER,
-    anomaly_score     INTEGER,
-    is_anomaly_overall INTEGER,
-    computed_at       TIMESTAMP DEFAULT NOW()
+    id SERIAL PRIMARY KEY, service_name  VARCHAR(128),
+    time_bucket TIMESTAMP, is_anomaly_error  INTEGER,
+    is_anomaly_latency INTEGER, is_anomaly_resource INTEGER,
+    is_error_rate_slo_breach INTEGER DEFAULT 0,
+    is_latency_slo_breach INTEGER DEFAULT 0,
+    anomaly_score  INTEGER, is_anomaly_overall INTEGER,
+    computed_at TIMESTAMP DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS failure_patterns (
-    id                SERIAL PRIMARY KEY,
-    service_name      VARCHAR(128),
-    pattern_type      VARCHAR(64),
-    occurrence_count  BIGINT,
-    avg_severity      DOUBLE PRECISION,
-    computed_at       TIMESTAMP DEFAULT NOW()
+    id SERIAL PRIMARY KEY, service_name  VARCHAR(128),
+    pattern_type VARCHAR(64), occurrence_count  BIGINT,
+    avg_severity DOUBLE PRECISION, computed_at TIMESTAMP DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS scalability_metrics (
-    id                SERIAL PRIMARY KEY,
-    label             VARCHAR(128),
-    input_rows        BIGINT,
-    groupby_agg_sec   DOUBLE PRECISION,
-    window_fn_sec     DOUBLE PRECISION,
-    join_sec          DOUBLE PRECISION,
-    shuffle_sec       DOUBLE PRECISION,
-    total_sec         DOUBLE PRECISION,
-    data_size         BIGINT,
-    repetition        INTEGER,
+    id  SERIAL PRIMARY KEY, label  VARCHAR(128),
+    input_rows  BIGINT, groupby_agg_sec   DOUBLE PRECISION,
+    window_fn_sec  DOUBLE PRECISION, join_sec DOUBLE PRECISION,
+    shuffle_sec DOUBLE PRECISION, total_sec DOUBLE PRECISION,
+    data_size BIGINT, repetition INTEGER,
     throughput_rows_per_sec DOUBLE PRECISION,
     speedup_vs_baseline DOUBLE PRECISION,
-    baseline_size     BIGINT,
-    baseline_time_sec DOUBLE PRECISION,
-    recorded_at       TIMESTAMP DEFAULT NOW()
+    baseline_size BIGINT, baseline_time_sec DOUBLE PRECISION,
+    recorded_at TIMESTAMP DEFAULT NOW()
 );
 """
 
@@ -202,35 +154,38 @@ def init_schema(conn):
 
         # Truncate tables before re-seeding for idempotent runs
         tables_to_clear = [
-            "processed_telemetry", "cross_service_pairs", "propagation_chains",
-            "error_correlations", "anomaly_scores", "failure_patterns",
-            "scalability_metrics",
+            "processed_telemetry", "cross_service_pairs",
+            "propagation_chains", "error_correlations", "anomaly_scores",
+            "failure_patterns", "scalability_metrics",
         ]
         for table in tables_to_clear:
             cur.execute(f"TRUNCATE TABLE {table} RESTART IDENTITY CASCADE")
 
     conn.commit()
-    logger.info("Schema initialised & tables cleared for fresh seed.")
+    logger.info("#### Schema initialised & tables cleared for fresh seed....")
 
 
-# ============================================================
-# Sample Data Generation (bypasses Spark/MinIO — direct SQL)
-# ============================================================
+# Sample Data Generation (bypasses Spark/MinIO - direct SQL)
+
 SERVICES = [
-    "frontend", "auth-service", "user-service", "order-service",
-    "payment-service", "inventory-service", "notification-service",
-    "shipping-service", "catalog-service", "cart-service",
-    "recommendation-service", "search-service", "analytics-service",
-    "rate-limiter", "api-gateway", "message-queue",
-    "cache-service", "logging-service", "config-service", "discovery-service",
+    "frontend", "auth-service",
+    "user-service", "order-service", "payment-service",
+    "inventory-service", "notification-service",
+    "shipping-service","catalog-service",
+    "cart-service", "recommendation-service", "search-service",
+    "analytics-service", "rate-limiter",
+    "api-gateway", "message-queue", "cache-service",
+    "logging-service", "config-service",
+    "discovery-service",
 ]
 
 FAILURE_SERVICES = ["auth-service", "payment-service", "frontend", "order-service"]
 STABLE_SERVICES = ["cache-service", "config-service", "discovery-service", "logging-service"]
 
 PATTERN_TYPES = [
-    "cascading_failure", "error_surge", "latency_spike",
-    "resource_pressure", "full_failure", "resource_exhaustion",
+    "cascading_failure", "error_surge",
+    "latency_spike", "resource_pressure",
+    "full_failure", "resource_exhaustion",
     "error_resource_link",
 ]
 
@@ -251,38 +206,36 @@ def seed_processed_telemetry(conn, num_rows=5000):
     for i in range(num_rows):
         svc = random.choice(SERVICES)
         is_fail = 1 if (svc in FAILURE_SERVICES and random.random() < 0.12) else 0
-        status = random.choice([500, 502, 503, 504]) if is_fail else random.choice([200, 200, 200, 200, 201, 204, 301])
+        status = (
+            random.choice([500, 502, 503, 504])
+            if is_fail
+            else random.choice([200, 200, 200, 200, 201, 204, 301])
+        )
         rt = round(max(5, abs(random.gauss(80, 60))), 2)
         is_spike = 1 if rt > 2000 else 0
 
-        rows.append((
-            f"trace-{i % 500:06d}",
-            svc,
-            f"span-{i:010d}",
-            f"span-{max(0, random.randint(0, max(0, i-1))):010d}" if random.random() > 0.3 else "",
-            random.choice(NAMESPACES),
-            random.choice(PODS),
-            random.choice(NODES),
-            rt,
-            round(max(0, random.gauss(15, 20)), 2),
-            round(max(1, random.gauss(40, 30)), 2),
-            round(max(0, random.gauss(5, 8)), 2),
-            base_time + timedelta(seconds=random.randint(0, 86400)),
-            base_time + timedelta(seconds=random.randint(0, 86400) + random.randint(1, 500)),
-            round(max(1, random.expovariate(1.0 / 100)), 2),
-            random.choice(HTTP_METHODS),
-            f"/api/v1/{svc}/{random.choice(ENDPOINTS)}",
-            status,
-            "Internal server error" if is_fail else "",
-            is_fail,
-            is_spike,
-            "low" if rt < 100 else ("medium" if rt < 500 else ("high" if rt < 2000 else "critical")),
-            "server_error" if status >= 500 else ("client_error" if status >= 400 else "success"),
-            random.randint(0, 23),
-            round(max(10, random.gauss(500, 300)), 2),
-            round(max(50, random.gauss(1024, 512)), 2),
-            round(random.uniform(0.1, 2.0), 4),
-        ))
+        rows.append(
+            (
+                f"trace-{i % 500:06d}",
+                svc,
+                f"span-{i:010d}",
+                f"span-{max(0, random.randint(0, max(0, i-1))):010d}" if random.random() > 0.3 else "",
+                random.choice(NAMESPACES),  random.choice(PODS),
+                random.choice(NODES), rt,
+                round(max(0, random.gauss(15, 20)), 2), round(max(1, random.gauss(40, 30)), 2),
+                round(max(0, random.gauss(5, 8)), 2), base_time + timedelta(seconds=random.randint(0, 86400)),
+                base_time + timedelta(seconds=random.randint(0, 86400) + random.randint(1, 500)),
+                round(max(1, random.expovariate(1.0 / 100)), 2),
+                random.choice(HTTP_METHODS), f"/api/v1/{svc}/{random.choice(ENDPOINTS)}",
+                status, "Internal server error" if is_fail else "",
+                is_fail, is_spike,
+                "low" if rt < 100 else ("medium" if rt < 500 else ("high" if rt < 2000 else "critical")),
+                "server_error" if status >= 500 else ("client_error" if status >= 400 else "success"),
+                random.randint(0, 23),
+                round(max(10, random.gauss(500, 300)), 2), round(max(50, random.gauss(1024, 512)), 2),
+                round(random.uniform(0.1, 2.0), 4)
+            )
+        )
 
     sql = """
         INSERT INTO processed_telemetry
@@ -297,7 +250,7 @@ def seed_processed_telemetry(conn, num_rows=5000):
     with conn.cursor() as cur:
         cur.executemany(sql, rows)
     conn.commit()
-    logger.info(f"  ✓ Inserted {num_rows:,} telemetry rows.")
+    logger.info(f"  [ok] Inserted {num_rows:,} telemetry rows.")
 
 
 def seed_cross_service_pairs(conn):
@@ -313,10 +266,14 @@ def seed_cross_service_pairs(conn):
                 call_count = random.randint(100, 10000)
                 caller_err = int(call_count * random.uniform(0.01, 0.15))
                 callee_err = int(call_count * random.uniform(0.01, 0.20))
-                co_fail = min(caller_err, callee_err) + int(random.uniform(0, min(caller_err, callee_err) * 0.5))
+                co_fail = min(caller_err, callee_err) + int(
+                    random.uniform(0, min(caller_err, callee_err) * 0.5)
+                )
                 propagation_score = round(co_fail / max(callee_err, 1), 4)
                 avg_lat = round(random.uniform(50, 2500), 2)
-                pairs.append((caller, callee, call_count, caller_err, callee_err, co_fail, avg_lat, propagation_score))
+                pairs.append(
+                    (caller, callee, call_count, caller_err, callee_err, co_fail, avg_lat, propagation_score)
+                )
 
     sql = """
         INSERT INTO cross_service_pairs
@@ -327,7 +284,7 @@ def seed_cross_service_pairs(conn):
     with conn.cursor() as cur:
         cur.executemany(sql, pairs)
     conn.commit()
-    logger.info(f"  ✓ Inserted {len(pairs)} cross-service pairs.")
+    logger.info(f"  [ok] Inserted {len(pairs)} cross-service pairs.")
 
 
 def seed_propagation_chains(conn):
@@ -353,7 +310,7 @@ def seed_propagation_chains(conn):
     with conn.cursor() as cur:
         cur.executemany(sql, chains)
     conn.commit()
-    logger.info(f"  ✓ Inserted {len(chains)} propagation chains.")
+    logger.info(f"  [ok] Inserted {len(chains)} propagation chains.")
 
 
 def seed_error_correlations(conn):
@@ -361,7 +318,7 @@ def seed_error_correlations(conn):
     logger.info("Seeding error_correlations...")
     corrs = []
     for i, srv_a in enumerate(SERVICES):
-        for srv_b in SERVICES[i + 1:]:
+        for srv_b in SERVICES[i + 1 :]:
             if random.random() < 0.35:
                 corr_val = round(random.uniform(-0.8, 0.9), 4)
                 corrs.append((srv_a, srv_b, corr_val, random.randint(100, 5000)))
@@ -373,7 +330,7 @@ def seed_error_correlations(conn):
     with conn.cursor() as cur:
         cur.executemany(sql, corrs)
     conn.commit()
-    logger.info(f"  ✓ Inserted {len(corrs)} error correlations.")
+    logger.info(f"  [ok] Inserted {len(corrs)} error correlations.")
 
 
 def seed_anomaly_scores(conn):
@@ -389,20 +346,31 @@ def seed_anomaly_scores(conn):
             is_err = 1 if (svc in FAILURE_SERVICES and random.random() < 0.08) else 0
             is_lat = 1 if random.random() < 0.06 else 0
             is_res = 1 if random.random() < 0.04 else 0
+            # An SLO breach is one of the two things that can raise a flag, so
+            # it only ever occurs on a bucket that is already flagged.
+            err_breach = 1 if (is_err and random.random() < 0.6) else 0
+            lat_breach = 1 if (is_lat and random.random() < 0.5) else 0
             anomaly_score = is_err + is_lat + is_res
             is_overall = 1 if anomaly_score >= 2 else 0
-            scores.append((svc, tb, is_err, is_lat, is_res, anomaly_score, is_overall))
+            scores.append(
+                (
+                    svc, tb, is_err, is_lat, is_res,
+                    err_breach, lat_breach,
+                    anomaly_score, is_overall
+                )
+            )
 
     sql = """
         INSERT INTO anomaly_scores
         (service_name, time_bucket, is_anomaly_error, is_anomaly_latency,
-         is_anomaly_resource, anomaly_score, is_anomaly_overall)
-        VALUES (%s,%s,%s,%s,%s,%s,%s)
+         is_anomaly_resource, is_error_rate_slo_breach, is_latency_slo_breach,
+         anomaly_score, is_anomaly_overall)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
     """
     with conn.cursor() as cur:
         cur.executemany(sql, scores)
     conn.commit()
-    logger.info(f"  ✓ Inserted {len(scores)} anomaly scores ({buckets_per_service * len(SERVICES)} buckets).")
+    logger.info(f"## inserted {len(scores)} anomaly scores ({buckets_per_service * len(SERVICES)} buckets).")
 
 
 def seed_failure_patterns(conn):
@@ -423,7 +391,7 @@ def seed_failure_patterns(conn):
     with conn.cursor() as cur:
         cur.executemany(sql, patterns)
     conn.commit()
-    logger.info(f"  ✓ Inserted {len(patterns)} failure patterns.")
+    logger.info(f"  [ok] Inserted {len(patterns)} failure patterns.")
 
 
 def seed_scalability_metrics(conn):
@@ -441,21 +409,12 @@ def seed_scalability_metrics(conn):
             total = round(groupby + window_fn + join_op + shuffle, 3)
             throughput = round(size / max(total, 0.001), 1)
 
-            metrics.append((
-                f"{size:,}_r{rep}",
-                size,
-                groupby,
-                window_fn,
-                join_op,
-                shuffle,
-                total,
-                size,
-                rep,
-                throughput,
-                None,  # speedup computed below
-                data_sizes[0],
-                None,  # baseline_time filled below
-            ))
+            metrics.append((  f"{size:,}_r{rep}",
+                    size,  groupby,
+                    window_fn, join_op, shuffle, total,
+                    size, rep, throughput,
+                    None,  # speedup computed below
+                    data_sizes[0], None))
 
     # Compute speedups relative to first entry's total_sec
     baseline_total = metrics[0][6]
@@ -475,12 +434,11 @@ def seed_scalability_metrics(conn):
     with conn.cursor() as cur:
         cur.executemany(sql, updated)
     conn.commit()
-    logger.info(f"  ✓ Inserted {len(updated)} scalability metrics.")
+    logger.info(f"  [ok] Inserted {len(updated)} scalability metrics.")
 
 
-# ============================================================
+
 # Full Seeding
-# ============================================================
 def seed_all(conn):
     """Seed all tables with sample data."""
     seed_processed_telemetry(conn, num_rows=5000)
@@ -494,24 +452,20 @@ def seed_all(conn):
     # Verify
     with conn.cursor() as cur:
         tables = [
-            "processed_telemetry",
-            "cross_service_pairs",
-            "propagation_chains",
-            "error_correlations",
-            "anomaly_scores",
-            "failure_patterns",
-            "scalability_metrics",
+            "processed_telemetry", "cross_service_pairs",
+            "propagation_chains", "error_correlations", "anomaly_scores",
+            "failure_patterns",  "scalability_metrics"
         ]
         for t in tables:
             cur.execute(f"SELECT COUNT(*) FROM {t}")
             cnt = cur.fetchone()[0]
-            status = f"{GREEN}✓{RESET}" if cnt > 0 else f"{RED}✗{RESET}"
+            status = f"{GREEN}[ok]{RESET}" if cnt > 0 else f"{RED}[x]{RESET}"
             logger.info(f"  {status} {t}: {cnt:,} rows")
 
 
-# ============================================================
+
 # Placeholder Plot Generation
-# ============================================================
+
 def generate_plots(project_root=PROJECT_ROOT):
     """Run the placeholder plot generator script."""
     logger.info("Generating placeholder plots...")
@@ -521,13 +475,11 @@ def generate_plots(project_root=PROJECT_ROOT):
         return
     try:
         result = subprocess.run(
-            [sys.executable, script],
-            capture_output=True,
-            text=True,
-            timeout=60,
+            [sys.executable, script],  capture_output=True,
+            text=True,  timeout=60,
         )
         if result.returncode == 0:
-            logger.info(f"  {GREEN}✓{RESET} Placeholder plots generated.")
+            logger.info(f"  {GREEN}[ok]{RESET} Placeholder plots generated.")
         else:
             logger.warning(f"Placeholder script exited with {result.returncode}: {result.stderr[:300]}")
     except Exception as e:
@@ -553,7 +505,7 @@ def main():
 
     banner()
 
-    # ---- Resolve PostgreSQL credentials ----
+    #resolve PostgreSQL credentials
     load_dotenv()
 
     pg_host = args.pg_host or os.getenv("POSTGRES_HOST", "localhost")
@@ -573,7 +525,7 @@ def main():
 
     # ---- SQLite (local) mode ----
     if args.local:
-        print(f"{BOLD}{CYAN}Mode: SQLite (local) — zero external dependencies{RESET}\n")
+        print(f"{BOLD}{CYAN}Mode: SQLite (local) - zero external dependencies{RESET}\n")
 
         os.environ["DB_MODE"] = "sqlite"
         db_path = os.path.join(PROJECT_ROOT, "dashboard.db")
@@ -583,12 +535,13 @@ def main():
         if not args.skip_seed:
             print(f"{BOLD}Step 1/3:{RESET} Creating SQLite database & seeding data...")
             from modules.local_seeder import seed_all as seed_sqlite
+
             seed_sqlite(db_path)
         else:
-            print(f"{BOLD}Step 1/3:{RESET} {YELLOW}⊘{RESET} Skipped seeding (--skip-seed).")
+            print(f"{BOLD}Step 1/3:{RESET} {YELLOW}-{RESET} Skipped seeding (--skip-seed).")
             if not os.path.exists(db_path):
-                print(f"{RED}  ✗ SQLite database not found at {db_path}{RESET}")
-                print(f"  Run without --skip-seed first to create it.")
+                print(f"{RED}  [x] SQLite database not found at {db_path}{RESET}")
+                print("  Run without --skip-seed first to create it.")
                 sys.exit(1)
 
         # Generate plots
@@ -603,43 +556,44 @@ def main():
             return
 
         # Launch
-        print(f"{BOLD}Step 3/3:{RESET} Launching Streamlit dashboard...")
+        print(f"{BOLD}Step 3/3:{RESET} Launching Streamlit dashboard....")
         print()
         print(f"  {GREEN}Database: SQLite ({db_path}){RESET}")
         print(f"  {GREEN}Dashboard: http://localhost:{args.port}{RESET}")
         print(f"  {CYAN}Press Ctrl+C to stop{RESET}")
         print()
     else:
-        # ---- PostgreSQL mode ----
+        #PostgreSQL mode
         print(f"{BOLD}Step 1/4:{RESET} Checking PostgreSQL at {pg_host}:{pg_port}...")
         if not check_postgres(pg_host, pg_port, pg_user, pg_pass, pg_db):
             print()
             print(f"{RED}{'=' * 60}{RESET}")
-            print(f"{RED}  Cannot connect to PostgreSQL{RESET}")
-            print(f"{RED}    Host: {pg_host}:{pg_port}{RESET}")
-            print(f"{RED}    User: {pg_user}{RESET}")
-            print(f"{RED}    DB:   {pg_db}{RESET}")
+            print(f"{RED} Cannot connect to PostgreSQL{RESET}")
+            print(f"{RED} Host: {pg_host}:{pg_port}{RESET}")
+            print(f"{RED} User: {pg_user}{RESET}")
+            print(f"{RED} DB: {pg_db}{RESET}")
             print()
             print(f"{YELLOW}  Quick fixes:{RESET}")
-            print(f"    {BOLD}docker compose up -d postgres{RESET}")
-            print(f"    {BOLD}python run_streamlit.py --local{RESET}  (zero-deps SQLite mode)")
+            print(f"{BOLD}docker compose up -d postgres{RESET}")
+            print(f" {BOLD}python run_streamlit.py --local{RESET}  (zero-deps SQLite mode)")
             print()
             print(f"{YELLOW}  Or pass custom credentials:{RESET}")
-            print(f"    python run_streamlit.py --pg-host <host> --pg-user <user> --pg-pass <pass> --pg-db <db>")
+            print(" python run_streamlit.py --pg-host <host> --pg-user <user> --pg-pass <pass> --pg-db <db>")
             print(f"{RED}{'=' * 60}{RESET}")
             sys.exit(1)
 
         print(f"  {GREEN}PostgreSQL is reachable.{RESET}")
 
         # Seed
-        print(f"{BOLD}Step 2/4:{RESET} Seeding database...")
+        print(f"{BOLD}Step 2/4:{RESET} Seeding database....")
         if args.skip_seed:
             print(f"  {YELLOW}Skipped (--skip-seed). Using existing data.{RESET}")
         else:
             import psycopg2
+
             conn = psycopg2.connect(
                 host=pg_host, port=pg_port,
-                user=pg_user, password=pg_pass, dbname=pg_db,
+                user=pg_user, password=pg_pass, dbname=pg_db
             )
             try:
                 init_schema(conn)
@@ -653,23 +607,23 @@ def main():
 
         if args.seed_only:
             print()
-            print(f"{GREEN}{'=' * 60}{RESET}")
+            print(f"{GREEN}{'=' * 50}{RESET}")
             print(f"{GREEN}  Data seeded & plots generated. Done.{RESET}")
-            print(f"{GREEN}{'=' * 60}{RESET}")
+            print(f"{GREEN}{'=' * 50}{RESET}")
             return
 
         print(f"{BOLD}Step 4/4:{RESET} Launching Streamlit dashboard...")
         print()
-        print(f"  {GREEN}Dashboard: http://localhost:{args.port}{RESET}")
-        print(f"  {CYAN}Press Ctrl+C to stop{RESET}")
+        print(f"{GREEN}Dashboard: http://localhost:{args.port}{RESET}")
+        print(f"{CYAN}Press Ctrl+C to stop{RESET}")
         print()
 
     # Build streamlit command
     dashboard_path = os.path.join(PROJECT_ROOT, "modules", "dashboard.py")
 
     cmd = [
-        sys.executable, "-m", "streamlit", "run",
-        dashboard_path,
+        sys.executable,
+        "-m", "streamlit", "run",  dashboard_path,
         "--server.port", str(args.port),
         "--server.address", "0.0.0.0",
         "--browser.serverAddress", "localhost",
