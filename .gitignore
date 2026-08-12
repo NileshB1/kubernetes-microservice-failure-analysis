@@ -16,7 +16,17 @@ build/
 venv/
 .venv/
 env/
-.env.local
+
+# ============================================================
+# Secrets - never commit these
+# ============================================================
+# .env holds real credentials. .env.example is the tracked template.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
 
 # ============================================================
 # Testing
@@ -30,9 +40,21 @@ htmlcov/
 # Project output & data
 # ============================================================
 # Placeholder PNGs in output/ are tracked in git.
-# Real pipeline output overwrites them — commit updated versions.
-data/*.csv
-data/*.parquet
+# Real pipeline output overwrites them - commit updated versions.
+
+# The source dataset is acquired at run time by
+# modules/dataset_acquisition.py - hundreds of megabytes that must never
+# be committed. Re-download it with:
+#   python -m modules.dataset_acquisition --data-dir ./data
+data/
+!data/.gitkeep
+
+# Generated at runtime, never committed.
+output/*.pdf
+output/*.log
+dashboard.db
+*.sqlite
+*.sqlite3
 
 # ============================================================
 # Docker volumes (mounted)

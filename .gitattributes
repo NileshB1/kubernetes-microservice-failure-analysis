@@ -1,0 +1,24 @@
+# Normalise line endings so files stay usable on Windows checkouts.
+#
+# Shell scripts are executed by Linux inside the containers. A CRLF
+# checkout turns the shebang into "/bin/bash\r", which the kernel cannot
+# resolve - the container then exits 127 with "bad interpreter". Forcing
+# LF on these keeps a Windows clone runnable.
+
+* text=auto
+
+*.sh    text eol=lf
+*.bash  text eol=lf
+*.sql   text eol=lf
+*.yaml  text eol=lf
+*.yml   text eol=lf
+*.py    text eol=lf
+Dockerfile      text eol=lf
+Makefile        text eol=lf
+.env.example    text eol=lf
+
+*.png binary
+*.jpg binary
+*.jar binary
+*.gz  binary
+*.zip binary

@@ -4,7 +4,7 @@
 
 1. [System Overview](#system-overview)
 2. [Infrastructure Topology](#infrastructure-topology)
-3. [Data Flow — End to End](#data-flow--end-to-end)
+3. [Data Flow - End to End](#data-flow--end-to-end)
 4. [Module Deep Dives](#module-deep-dives)
    - [Module 1: Ingestion](#module-1-data-ingestion)
    - [Module 2: Preprocessing](#module-2-data-preprocessing)
@@ -36,103 +36,103 @@ This project implements a **distributed data-intensive pipeline** for analysing 
 ## Infrastructure Topology
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                      Docker Compose                          │
-│                                                              │
-│  ┌─────────┐   ┌──────────────┐   ┌───────────────────┐     │
-│  │  MinIO  │   │ Spark Master │   │ Spark Worker × N   │     │
-│  │ :9000   │   │ :7077 :8080  │   │ (local[2] in dev) │     │
-│  │ (S3 API)│   │ (REST API)   │   │                   │     │
-│  └────┬────┘   └──────┬───────┘   └─────────┬─────────┘     │
-│       │               │                     │               │
-│       │    ┌──────────┴─────────────────────┘               │
-│       │    │  Spark Driver (pipeline container)             │
-│       │    │    • Reads CSV from MinIO via s3a://            │
-│       │    │    • Processes with Spark DataFrames           │
-│       │    │    • Writes results to PostgreSQL via JDBC     │
-│       │    │    • Writes Parquet back to MinIO              │
-│       │    └──────────────────┬─────────────────────┘       │
-│       │                       │                             │
-│  ┌────┴───────────────────────┴──────┐                      │
-│  │         PostgreSQL :5432          │                      │
-│  │   • Results database (7 tables)   │                      │
-│  │   • Schema defined in sql/init.sql│                      │
-│  └────────────────┬──────────────────┘                      │
-│                   │                                         │
-│  ┌────────────────┴──────────────────┐                      │
-│  │      Streamlit Dashboard :8501    │                      │
-│  │   • Reads from PostgreSQL/SQLite  │                      │
-│  │   • Interactive visualisations    │                      │
-│  │   • Pipeline controls & log viewer│                      │
-│  └───────────────────────────────────┘                      │
-└──────────────────────────────────────────────────────────────┘
++--------------------------------------------------------------+
+|                      Docker Compose                          |
+|                                                              |
+|  +---------+   +--------------+   +-------------------+     |
+|  |  MinIO  |   | Spark Master |   | Spark Worker x N   |     |
+|  | :9000   |   | :7077 :8080  |   | (local[2] in dev) |     |
+|  | (S3 API)|   | (REST API)   |   |                   |     |
+|  +----+----+   +------+-------+   +---------+---------+     |
+|       |               |                     |               |
+|       |    +----------+---------------------+               |
+|       |    |  Spark Driver (pipeline container)             |
+|       |    |    - Reads CSV from MinIO via s3a://            |
+|       |    |    - Processes with Spark DataFrames           |
+|       |    |    - Writes results to PostgreSQL via JDBC     |
+|       |    |    - Writes Parquet back to MinIO              |
+|       |    +------------------+---------------------+       |
+|       |                       |                             |
+|  +----+-----------------------+------+                      |
+|  |         PostgreSQL :5432          |                      |
+|  |   - Results database (7 tables)   |                      |
+|  |   - Schema defined in sql/init.sql|                      |
+|  +----------------+------------------+                      |
+|                   |                                         |
+|  +----------------+------------------+                      |
+|  |      Streamlit Dashboard :8501    |                      |
+|  |   - Reads from PostgreSQL/SQLite  |                      |
+|  |   - Interactive visualisations    |                      |
+|  |   - Pipeline controls & log viewer|                      |
+|  +-----------------------------------+                      |
++--------------------------------------------------------------+
 ```
 
 ### Service Communication
 
-| From → To | Protocol | Purpose |
+| From -> To | Protocol | Purpose |
 |-----------|----------|---------|
-| Pipeline → MinIO | S3 API (s3a://) | Read raw CSV, write processed Parquet |
-| Pipeline → PostgreSQL | JDBC | Write analysis results |
-| Pipeline → Spark Master | Spark RPC (:7077) | Submit jobs, coordinate executors |
-| Spark Executors → MinIO | S3 API | Distributed read/write of data |
-| Dashboard → PostgreSQL | psycopg2 (libpq) | Read results for display |
-| Dashboard → Spark Master | HTTP REST (:8080) | Fetch cluster metrics |
+| Pipeline -> MinIO | S3 API (s3a://) | Read raw CSV, write processed Parquet |
+| Pipeline -> PostgreSQL | JDBC | Write analysis results |
+| Pipeline -> Spark Master | Spark RPC (:7077) | Submit jobs, coordinate executors |
+| Spark Executors -> MinIO | S3 API | Distributed read/write of data |
+| Dashboard -> PostgreSQL | psycopg2 (libpq) | Read results for display |
+| Dashboard -> Spark Master | HTTP REST (:8080) | Fetch cluster metrics |
 
 ---
 
-## Data Flow — End to End
+## Data Flow - End to End
 
 ### Pipeline Path (Docker Mode)
 
 ```
 Step 1: Ingestion
-  Python generates 5 CSV files (100K–1M rows)
-    → Uploads to MinIO: s3a://microservice-logs/raw/*.csv
+  Python generates 5 CSV files (100K-1M rows)
+    -> Uploads to MinIO: s3a://microservice-logs/raw/*.csv
 
 Step 2: Preprocessing
   Spark reads all 5 CSVs from MinIO
-    → clean_and_validate() — deduplicates, filters nulls/negatives
-    → join_datasets() — 4× inner join on span_id across datasets
-    → engineer_features() — adds 6 derived columns (is_failure, latency_bucket, etc.)
-    → Writes unified Parquet to MinIO + PostgreSQL
+    -> clean_and_validate() - deduplicates, filters nulls/negatives
+    -> join_datasets() - 4x inner join on span_id across datasets
+    -> engineer_features() - adds 6 derived columns (is_failure, latency_bucket, etc.)
+    -> Writes unified Parquet to MinIO + PostgreSQL
 
 Step 3: Cross-Service Analysis (RQ1)
   Spark reads unified Parquet
-    → build_service_dependency_graph() — self-join parent_span_id→span_id
-    → detect_propagation_chains() — lead() window function, filter by time window
-    → correlate_cross_service_errors() — pairwise join + stat.corr()
-    → Writes 3 tables to PostgreSQL + Parquet to MinIO
+    -> build_service_dependency_graph() - self-join parent_span_id->span_id
+    -> detect_propagation_chains() - lead() window function, filter by time window
+    -> correlate_cross_service_errors() - pairwise join + stat.corr()
+    -> Writes 3 tables to PostgreSQL + Parquet to MinIO
 
 Step 4: Failure Detection (RQ2)
   Spark reads unified Parquet
-    → compute_error_rate_timeseries() — windowed groupBy per service
-    → detect_*_anomalies() — 3× z-score detection (error, latency, resource)
-    → unify_anomalies() — outer join, composite score (0–3), overall flag (≥2)
-    → cluster_failure_patterns() — group by signal combination → 7 pattern types
-    → Writes 2 tables to PostgreSQL + Parquet to MinIO
+    -> compute_error_rate_timeseries() - windowed groupBy per service
+    -> detect_*_anomalies() - 3x z-score detection (error, latency, resource)
+    -> unify_anomalies() - outer join, composite score (0-3), overall flag (>=2)
+    -> cluster_failure_patterns() - group by signal combination -> 7 pattern types
+    -> Writes 2 tables to PostgreSQL + Parquet to MinIO
 
 Step 5: Scalability Analysis (RQ3)
-  For each of 5 data sizes (100K → 1M in dev, 1M → 50M in prod):
-    → generate_scaled_dataset() — spark.range() + random columns
-    → run_benchmark() — measures GroupBy, Window, Join, Shuffle timing
-    → Record throughput, compute speed-up and efficiency
-    → Writes to PostgreSQL
+  For each of 5 data sizes (100K -> 1M in dev, 1M -> 50M in prod):
+    -> generate_scaled_dataset() - spark.range() + random columns
+    -> run_benchmark() - measures GroupBy, Window, Join, Shuffle timing
+    -> Record throughput, compute speed-up and efficiency
+    -> Writes to PostgreSQL
 
 Step 6: Visualization
   Reads all PostgreSQL tables
-    → Generates 6 PNG plots (heatmaps, time series, scaling curves)
-    → Saves to /output/ directory
+    -> Generates 6 PNG plots (heatmaps, time series, scaling curves)
+    -> Saves to /output/ directory
 ```
 
 ### Lightweight Path (SQLite Mode)
 
 ```
 run_streamlit.py --local
-  → Creates dashboard.db (SQLite)
-  → Seeds all 7 tables with 5K+ realistic rows
-  → Generates placeholder plots
-  → Launches Streamlit dashboard (no Docker, no Spark, no PostgreSQL)
+  -> Creates dashboard.db (SQLite)
+  -> Seeds all 7 tables with 5K+ realistic rows
+  -> Generates placeholder plots
+  -> Launches Streamlit dashboard (no Docker, no Spark, no PostgreSQL)
 ```
 
 ---
@@ -143,7 +143,7 @@ run_streamlit.py --local
 
 **File:** `modules/ingestion.py`  
 **Spark:** No (pure Python, generates CSV)  
-**Output:** 5 CSV files → MinIO `s3a://microservice-logs/raw/`
+**Output:** 5 CSV files -> MinIO `s3a://microservice-logs/raw/`
 
 Generates realistic Kubernetes microservice telemetry matching the dataset schema:
 
@@ -157,7 +157,7 @@ Generates realistic Kubernetes microservice telemetry matching the dataset schem
 
 **Key design decisions:**
 - Span IDs are sequential for deterministic joins during preprocessing
-- ~8% of rows are failures (status ≥ 500) to create realistic propagation patterns
+- ~8% of rows are failures (status >= 500) to create realistic propagation patterns
 - ~20 distinct service names drawn from a pool of common microservices
 - Parent span IDs follow a linked-list pattern within traces for dependency graph inference
 
@@ -166,48 +166,48 @@ Generates realistic Kubernetes microservice telemetry matching the dataset schem
 ### Module 2: Data Preprocessing
 
 **File:** `modules/preprocessing.py`  
-**Spark:** Yes (heavy — all 5 CSVs processed concurrently)  
+**Spark:** Yes (heavy - all 5 CSVs processed concurrently)  
 **Input:** 5 CSV files from MinIO  
-**Output:** Unified Parquet → MinIO + PostgreSQL `processed_telemetry`
+**Output:** Unified Parquet -> MinIO + PostgreSQL `processed_telemetry`
 
 #### Pipeline Steps
 
 ```
 Raw CSVs (5 files)
-    │
-    ▼
+    |
+    v
 clean_and_validate()
-    ├── Drop duplicate span_ids (keep first)
-    ├── Filter null span_ids
-    ├── Filter empty parent_span_ids
-    ├── Filter negative response_times & processing_times
-    ├── Parse ISO-8601 timestamps → TimestampType
-    ├── Filter null timestamps
-    ├── Filter negative CPU usage
-    └── Return dict of 5 cleaned DataFrames
-    │
-    ▼
+    +-- Drop duplicate span_ids (keep first)
+    +-- Filter null span_ids
+    +-- Filter empty parent_span_ids
+    +-- Filter negative response_times & processing_times
+    +-- Parse ISO-8601 timestamps -> TimestampType
+    +-- Filter null timestamps
+    +-- Filter negative CPU usage
+    +-- Return dict of 5 cleaned DataFrames
+    |
+    v
 join_datasets()
-    ├── Inner join service + response on span_id
-    ├── Inner join result + request on span_id
-    ├── Inner join result + status on span_id
-    ├── Left join result + resource on pod_id
-    └── Returns single unified DataFrame
-    │
-    ▼
+    +-- Inner join service + response on span_id
+    +-- Inner join result + request on span_id
+    +-- Inner join result + status on span_id
+    +-- Left join result + resource on pod_id
+    +-- Returns single unified DataFrame
+    |
+    v
 engineer_features()
-    ├── is_failure:         status_code ≥ 500 → 1, else 0
-    ├── is_latency_spike:   response_time_ms > 2000 → 1, else 0
-    ├── latency_bucket:     low (<100), medium (<500), high (<2000), critical (≥2000)
-    ├── error_category:     success (2xx), client_error (4xx), server_error (5xx)
-    ├── hour_of_day:        hour() extracted from start_time_ts
-    └── cpu_memory_ratio:   cpu_usage_mcores / memory_usage_mb
+    +-- is_failure:         status_code >= 500 -> 1, else 0
+    +-- is_latency_spike:   response_time_ms > 2000 -> 1, else 0
+    +-- latency_bucket:     low (<100), medium (<500), high (<2000), critical (>=2000)
+    +-- error_category:     success (2xx), client_error (4xx), server_error (5xx)
+    +-- hour_of_day:        hour() extracted from start_time_ts
+    +-- cpu_memory_ratio:   cpu_usage_mcores / memory_usage_mb
 ```
 
 **Spark operations used:**
-- `dropDuplicates(["span_id"])` — deduplication
+- `dropDuplicates(["span_id"])` - deduplication
 - `filter()` with complex boolean expressions
-- `to_timestamp()` — ISO-8601 parsing
+- `to_timestamp()` - ISO-8601 parsing
 - 4 sequential inner joins + 1 left join
 - `withColumn()` chains for feature engineering
 
@@ -228,15 +228,15 @@ This module answers RQ1 through three complementary analyses:
 
 ```
 build_service_dependency_graph()
-    │
-    ├── Self-join: parent.span_id = child.parent_span_id
-    │   (extracts caller→callee from trace topology)
-    │
-    ├── Group by (caller_service, callee_service)
-    │   ├── call_count, caller_error_count, callee_error_count
-    │   └── co_failure_count (both failed)
-    │
-    └── propagation_score = co_failure_count / callee_error_count
+    |
+    +-- Self-join: parent.span_id = child.parent_span_id
+    |   (extracts caller->callee from trace topology)
+    |
+    +-- Group by (caller_service, callee_service)
+    |   +-- call_count, caller_error_count, callee_error_count
+    |   +-- co_failure_count (both failed)
+    |
+    +-- propagation_score = co_failure_count / callee_error_count
         (0.0 = no propagation, 1.0 = all callee failures preceded by caller failure)
 ```
 
@@ -246,17 +246,17 @@ build_service_dependency_graph()
 
 ```
 detect_propagation_chains()
-    │
-    ├── Filter to failures only (is_failure = 1)
-    │
-    ├── Window: PARTITION BY trace_id ORDER BY start_time_ts
-    │   └── lead(service_name, 1) → next_service
-    │   └── lead(is_failure, 1) → next_is_failure
-    │   └── lag in seconds: unix_timestamp(next) - unix_timestamp(current)
-    │
-    ├── Filter: next_is_failure = 1 AND lag ≤ time_window_sec AND service ≠ next_service
-    │
-    └── Output: (trace_id, source_service, target_service, propagation_lag_sec, depth=2)
+    |
+    +-- Filter to failures only (is_failure = 1)
+    |
+    +-- Window: PARTITION BY trace_id ORDER BY start_time_ts
+    |   +-- lead(service_name, 1) -> next_service
+    |   +-- lead(is_failure, 1) -> next_is_failure
+    |   +-- lag in seconds: unix_timestamp(next) - unix_timestamp(current)
+    |
+    +-- Filter: next_is_failure = 1 AND lag <= time_window_sec AND service != next_service
+    |
+    +-- Output: (trace_id, source_service, target_service, propagation_lag_sec, depth=2)
 ```
 
 **Why this works:** Temporal ordering within traces reveals cascading failures. If service A fails at t=0 and service B fails at t=45s within the same trace, we infer a propagation chain. The time window (default 60s) prevents false positives from unrelated failures.
@@ -265,19 +265,19 @@ detect_propagation_chains()
 
 ```
 correlate_cross_service_errors()
-    │
-    ├── Compute per-service per-minute error rates
-    │   └── window("start_time_ts", "1 minute") → minute_ts
-    │
-    ├── For each service pair (A, B):
-    │   ├── Join error-rate time series on minute_ts
-    │   ├── Filter: n ≥ 5 overlapping minutes
-    │   └── Compute stat.corr(error_rate_a, error_rate_b)
-    │
-    └── Filter: |correlation| ≥ min_correlation (default 0.3)
+    |
+    +-- Compute per-service per-minute error rates
+    |   +-- window("start_time_ts", "1 minute") -> minute_ts
+    |
+    +-- For each service pair (A, B):
+    |   +-- Join error-rate time series on minute_ts
+    |   +-- Filter: n >= 5 overlapping minutes
+    |   +-- Compute stat.corr(error_rate_a, error_rate_b)
+    |
+    +-- Filter: |correlation| >= min_correlation (default 0.3)
 ```
 
-**Why this works:** Even when services don't have direct parent-child relationships in traces, their error rates may correlate over time — indicating shared root causes (e.g., network congestion, node failure, shared dependency failure).
+**Why this works:** Even when services don't have direct parent-child relationships in traces, their error rates may correlate over time - indicating shared root causes (e.g., network congestion, node failure, shared dependency failure).
 
 **Spark operations used:**
 - Self-join with aliased DataFrames
@@ -301,44 +301,44 @@ correlate_cross_service_errors()
 
 ```
 compute_error_rate_timeseries(window_minutes=15)
-    │
-    ├── window("start_time_ts", "15 minutes") → time_bucket
-    │
-    └── Group by (service_name, time_bucket)
-        ├── COUNT(*) → total_requests
-        ├── SUM(is_failure) → error_count
-        ├── AVG(response_time_ms) → avg_latency_ms
-        ├── AVG(cpu_usage_mcores) → avg_cpu_mcores
-        └── AVG(memory_usage_mb) → avg_memory_mb
+    |
+    +-- window("start_time_ts", "15 minutes") -> time_bucket
+    |
+    +-- Group by (service_name, time_bucket)
+        +-- COUNT(*) -> total_requests
+        +-- SUM(is_failure) -> error_count
+        +-- AVG(response_time_ms) -> avg_latency_ms
+        +-- AVG(cpu_usage_mcores) -> avg_cpu_mcores
+        +-- AVG(memory_usage_mb) -> avg_memory_mb
 ```
 
 #### Step 2: Multi-Signal Z-Score Detection
 
-For each of three signals — error rate, latency, and resource usage:
+For each of three signals - error rate, latency, and resource usage:
 
 ```
 detect_*_anomalies(zscore_threshold=3.0)
-    │
-    ├── Per-service baseline:
-    │   ├── mean = AVG(signal) over all time buckets
-    │   └── stddev = STDDEV(signal) over all time buckets
-    │
-    ├── Join baseline to time series
-    │   └── zscore = (value - mean) / stddev
-    │
-    └── Flag: |zscore| > threshold → is_anomaly_* = 1
+    |
+    +-- Per-service baseline:
+    |   +-- mean = AVG(signal) over all time buckets
+    |   +-- stddev = STDDEV(signal) over all time buckets
+    |
+    +-- Join baseline to time series
+    |   +-- zscore = (value - mean) / stddev
+    |
+    +-- Flag: |zscore| > threshold -> is_anomaly_* = 1
 ```
 
 #### Step 3: Anomaly Unification
 
 ```
 unify_anomalies()
-    │
-    ├── Outer join all 3 anomaly DataFrames on (service_name, time_bucket)
-    │
-    ├── Composite score: anomaly_score = sum of 3 binary flags (0–3)
-    │
-    └── Overall flag: is_anomaly_overall = (anomaly_score ≥ 2)
+    |
+    +-- Outer join all 3 anomaly DataFrames on (service_name, time_bucket)
+    |
+    +-- Composite score: anomaly_score = sum of 3 binary flags (0-3)
+    |
+    +-- Overall flag: is_anomaly_overall = (anomaly_score >= 2)
         (at least 2 out of 3 signals must indicate anomaly)
 ```
 
@@ -348,15 +348,15 @@ unify_anomalies()
 
 ```
 cluster_failure_patterns()
-    │
-    └── Map signal combinations to 7 pattern types:
-        ├── full_failure:          error + latency + resource
-        ├── cascading_failure:     error + latency
-        ├── resource_exhaustion:   latency + resource
-        ├── error_resource_link:   error + resource
-        ├── error_surge:           error only
-        ├── latency_spike:         latency only
-        └── resource_pressure:     resource only
+    |
+    +-- Map signal combinations to 7 pattern types:
+        +-- full_failure:          error + latency + resource
+        +-- cascading_failure:     error + latency
+        +-- resource_exhaustion:   latency + resource
+        +-- error_resource_link:   error + resource
+        +-- error_surge:           error only
+        +-- latency_spike:         latency only
+        +-- resource_pressure:     resource only
 ```
 
 Each pattern records the service, occurrence count, and average severity for downstream analysis.
@@ -383,18 +383,18 @@ Each pattern records the service, occurrence count, and average severity for dow
 
 ```
 run_scalability_experiments()
-    │
-    ├── For each data_size in [100K, 500K, 1M, ...]:
-    │   │
-    │   ├── generate_scaled_dataset()
-    │   │   └── spark.range(target_rows) → add random columns → write Parquet
-    │   │
-    │   └── For rep in 1..repetitions:
-    │       └── run_benchmark()
-    │           ├── GroupBy + Aggregation:  per-service stats
-    │           ├── Window Function:        lead() over trace_id
-    │           ├── Join:                   sample join against full dataset
-    │           └── Shuffle:                repartition(16, "service_name")
+    |
+    +-- For each data_size in [100K, 500K, 1M, ...]:
+    |   |
+    |   +-- generate_scaled_dataset()
+    |   |   +-- spark.range(target_rows) -> add random columns -> write Parquet
+    |   |
+    |   +-- For rep in 1..repetitions:
+    |       +-- run_benchmark()
+    |           +-- GroupBy + Aggregation:  per-service stats
+    |           +-- Window Function:        lead() over trace_id
+    |           +-- Join:                   sample join against full dataset
+    |           +-- Shuffle:                repartition(16, "service_name")
 ```
 
 #### Benchmark Operations
@@ -415,9 +415,9 @@ For each data size:
   scalability_efficiency  = speedup / (current_size / baseline_size)
 ```
 
-- **Speed-up > data_ratio** → super-linear scaling (parallelism benefit)
-- **Speed-up ≈ data_ratio** → near-linear scaling (ideal)
-- **Speed-up < data_ratio** → sub-linear scaling (overhead dominates)
+- **Speed-up > data_ratio** -> super-linear scaling (parallelism benefit)
+- **Speed-up ~ data_ratio** -> near-linear scaling (ideal)
+- **Speed-up < data_ratio** -> sub-linear scaling (overhead dominates)
 
 **Expected scaling characteristic for this workload:** Near-linear for GroupBy and Shuffle operations (embarrassingly parallel), sub-linear for Window functions and Joins (require data co-location or broadcast).
 
@@ -438,7 +438,7 @@ For each data size:
 
 | Plot | RQ | Data Source | Chart Type |
 |------|-----|-------------|------------|
-| `rq1_propagation_heatmap.png` | RQ1 | `cross_service_pairs` | Heatmap (caller × callee, color = propagation_score) |
+| `rq1_propagation_heatmap.png` | RQ1 | `cross_service_pairs` | Heatmap (caller x callee, color = propagation_score) |
 | `rq2_anomaly_timeseries.png` | RQ2 | `anomaly_scores` | Multi-line time series per service |
 | `rq2_failure_patterns.png` | RQ2 | `failure_patterns` | Grouped bar chart (pattern type per service) |
 | `rq3_scaling_curves.png` | RQ3 | `scalability_metrics` | Log-log scatter (data size vs time) |
@@ -486,6 +486,10 @@ error_correlations (
 anomaly_scores (
     service_name, time_bucket,
     is_anomaly_error, is_anomaly_latency, is_anomaly_resource,
+    -- Which detector raised the flag: an absolute SLO breach
+    -- (persistently degraded) rather than a z-score deviation
+    -- (regressing against its own baseline).
+    is_error_rate_slo_breach, is_latency_slo_breach,
     anomaly_score, is_anomaly_overall
 )
 
@@ -504,37 +508,146 @@ scalability_metrics (
 
 ### SQLite (Local Mode)
 
-Identical schema with SQLite-compatible types (INTEGER, REAL, TEXT). No Parquet/MinIO — all data lives in `dashboard.db`.
+Identical schema with SQLite-compatible types (INTEGER, REAL, TEXT). No Parquet/MinIO - all data lives in `dashboard.db`.
+
+---
+
+## Source Dataset and Acquisition
+
+**Source:** the Nezha dataset (Yu et al., FSE 2023) - real telemetry captured from the
+Online Boutique and Train Ticket microservice benchmarks running on Kubernetes.
+Repository: <https://github.com/IntelligentDDS/Nezha>
+
+**Retrieval:** programmatic, over the GitHub REST API
+(`modules/dataset_acquisition.py`). The file manifest is queried at run time and each
+file fetched over HTTPS, so no data is committed to the repository and nothing is scraped.
+
+### Two measurement roots, both used
+
+| Root | Contents | Role |
+|------|----------|------|
+| `construct_data` | fault-free baseline capture | learns what normal latency looks like |
+| `rca_data` | fault-injection windows | the data under analysis |
+| `rca_data/*-fault_list.json` | ground-truth injections | **evaluation only** |
+
+### Volume acquired (capture date 2022-08-22, traces + metrics)
+
+| Measure | Value |
+|---------|-------|
+| Source rows | 1,598,095 |
+| Canonical spans after adaptation | 1,596,884 |
+| Unified rows after preprocessing | 1,588,267 |
+| Microservices | 10 |
+| Ground-truth injections | 24, across 5 fault types |
+
+### Field provenance
+
+`modules/source_adapter.py` maps the source onto the canonical five-dataset schema.
+Fields fall into three categories, and the module documents which is which:
+
+- **Measured** - trace and span identifiers, pod, service (derived from the pod name by
+  stripping the Kubernetes replicaset and pod suffixes), operation, timestamps, duration,
+  CPU, memory, network.
+- **Left NULL** - `wait_time_ms`, `network_latency_ms`, `disk_io_*`. Nezha does not measure
+  them; they are not invented.
+- **Derived** - `is_error`, explained below.
+
+### How "failure" is defined, and why evaluation stays honest
+
+The Nezha authors deliberately tuned the injected faults to degrade performance *without*
+producing trivially detectable errors, so almost every HTTP response is a 200. Failure is
+therefore defined as latency degradation: a span is failed when its **self time** exceeds
+the **p99 for that same operation, measured in the fault-free baseline capture**.
+
+**Self time, not inclusive duration.** A traced duration includes the time the span's
+downstream calls took. Judging failure on that would make the RQ1 propagation analysis
+circular - a slow child mechanically makes its parent slow, so every child failure
+co-occurs with a parent failure and every propagation score collapses to exactly 1.0. That
+measures how distributed tracing accounts for time, not how failures spread. Subtracting
+the children's duration isolates the work each service did itself, so propagation has to be
+demonstrated rather than assumed.
+
+A per-operation threshold matters - a 4 ms catalogue lookup and a 120 ms checkout are both
+normal, and one global threshold would either miss the first or condemn the second.
+
+Critically, that threshold is learned **only** from `construct_data` and never reads the
+fault labels. The ground truth is written to its own `fault_injections` table and is read
+by exactly one Spark SQL query (`ground_truth_evaluation`). Detecting from the labels and
+then scoring against them would be circular; this arrangement prevents it, and a test
+asserts that no other query touches the ground-truth view.
+
+---
+
+## Two Data Processing Languages
+
+| Language | Where | Why |
+|----------|-------|-----|
+| PySpark DataFrame API | `preprocessing`, `cross_service_analysis`, `failure_detection`, `scalability_analysis`, `source_adapter` | logic needing control flow, parameters, and reuse |
+| Spark SQL | `sql/analysis_queries.sql`, run by `modules/spark_sql_analysis.py` | set-oriented questions: grouping, ranking, window functions, percentiles |
+
+Both compile to the same Catalyst plans and execute on the same cluster; the choice is
+about which expresses a given question more clearly.
+
+The SQL statements live in a `.sql` file rather than in Python string literals so they stay
+reviewable and can be run against a Spark shell independently. Six queries are defined:
+`service_latency_profile`, `endpoint_hotspots`, `trace_depth_distribution`,
+`service_failure_ranking`, `hourly_failure_trend`, and `ground_truth_evaluation`.
 
 ---
 
 ## Dashboard Architecture
 
-**File:** `modules/dashboard.py` (Streamlit)  
+**Entry point:** `modules/dashboard.py` - page config, sidebar, navigation only  
 **Backend:** PostgreSQL or SQLite via `modules/db_adapter.py`  
 **Port:** `8501`
 
-### Tab Structure
+### Module layout
 
-| Tab | Content | Data Source |
-|-----|---------|-------------|
-| 🏠 **Overview** | 4 metric cards, architecture diagram, pipeline progress, image gallery | All tables |
-| 🔗 **RQ1 · Propagation** | Propagation heatmap, top chains bar chart, error correlation matrix, details table | `cross_service_pairs`, `propagation_chains`, `error_correlations` |
-| 🔴 **RQ2 · Anomalies** | Anomaly metrics, anomalies-per-service chart, pattern distribution pie, signal breakdown, details table | `anomaly_scores`, `failure_patterns` |
-| ⚡ **RQ3 · Scalability** | Execution time curve, throughput chart, speed-up/efficiency dual-axis, operation breakdown, raw data | `scalability_metrics` |
-| 🖥️ **Spark Cluster** | Real-time cluster metrics via Spark REST API (:8080) | Spark Master API |
-| 📋 **Logs** | Live pipeline log viewer with level filtering, search, highlighting | `/output/pipeline.log` |
+| File | Responsibility |
+|------|----------------|
+| `modules/dashboard.py` | Entry point: page config, sidebar, service filter, routing |
+| `modules/ui/theme.py` | Design tokens, the validated palette, Plotly chrome |
+| `modules/ui/components.py` | Stat tiles, sections, status pills, empty states, chart wrapper |
+| `modules/ui/data.py` | Every dashboard query - cached, parameterised, backend-neutral |
+| `modules/ui/pages/*.py` | One module per page, each exposing `render(palette, services)` |
+
+### Pages
+
+| Page | Content | Data source |
+|------|---------|-------------|
+| **Overview** | KPI tiles, traffic and error rate by hour, failures by service, outcome and latency mix | `processed_telemetry`, `anomaly_scores` |
+| **RQ1 - Propagation** | Propagation-score matrix (sequential ramp), observed cascades, error-rate correlation (diverging ramp), ranked pair table | `cross_service_pairs`, `propagation_chains`, `error_correlations` |
+| **RQ2 - Anomalies** | Anomaly timeline as small multiples, worst-affected services, regression-vs-chronic split, pattern mix | `anomaly_scores`, `failure_patterns` |
+| **RQ3 - Scalability** | Runtime and throughput vs data size (log-log), time growth vs ideal, scaling efficiency, per-operation breakdown | `scalability_metrics` |
+| **Service explorer** | Single-service traffic, reliability, downstream blast radius and upstream exposure | `processed_telemetry`, `cross_service_pairs` |
+| **Operations** | Pipeline runner, Spark cluster metrics, log viewer, PDF report, effective configuration | Spark REST API, log file, all tables |
+
+### Visualisation rules
+
+The chart layer follows a fixed set of rules rather than per-chart taste:
+
+- **No dual-axis charts.** Two y-scales can be aligned arbitrarily, inventing a
+  correlation the data does not contain. RQ3's speed-up and efficiency are
+  therefore two panels, not one plot with two axes.
+- **Colour is assigned by job.** Categorical (identity) uses eight fixed slots
+  validated for colour-vision-deficiency separation on both surfaces; sequential
+  (magnitude) is one hue light->dark; diverging (polarity) is two opposed hues
+  around a grey midpoint; status is a reserved set never reused as a series.
+- **Colour never carries meaning alone.** Status is icon + label + colour, and
+  every chart ships a table view with CSV export.
+- **Light and dark are separately validated palettes**, selected from the
+  viewer's own Streamlit theme setting via `st.context.theme`.
 
 ### Database Abstraction Layer
 
 ```
 modules/db_adapter.py
-    ├── DB_MODE detection (env var or auto-detect)
-    ├── get_connection()     → psycopg2 or sqlite3
-    ├── run_query()          → DataFrame (unified API)
-    ├── get_table_names()    → cross-backend table listing
-    ├── get_table_row_count()→ cross-backend row counting
-    └── check_connection()   → connectivity test
+    +-- DB_MODE detection (env var or auto-detect)
+    +-- get_connection()     -> psycopg2 or sqlite3
+    +-- run_query()          -> DataFrame (unified API)
+    +-- get_table_names()    -> cross-backend table listing
+    +-- get_table_row_count()-> cross-backend row counting
+    +-- check_connection()   -> connectivity test
 ```
 
 ### Theme System
@@ -573,15 +686,16 @@ CSS custom properties with `[data-theme="dark"]` and `[data-theme="light"]` attr
 ### Test Pyramid
 
 ```
-        ┌──────┐
-        │ E2E  │  Full pipeline in Docker (make test-docker)
-        │──────│
-       ┌┴──────┴┐
-       │ Spark  │  ~85 tests across preprocessing, cross_service, failure_detection, scalability
-       │────────│
-      ┌┴────────┴┐
-      │  Unit    │  127 tests (local_seeder: 62, db_adapter: 40, ingestion: 25)
-      └──────────┘
+        +------+
+        | E2E  |  Full pipeline in Docker (make test-docker)
+        |------|
+       ++------++
+       | Spark  |  ~100 tests: preprocessing, cross_service, failure_detection, scalability
+       |--------|
+      ++--------++
+      |  Unit    |  250 tests: seeder, db_adapter, settings, ingestion,
+      |          |             report, acquisition, SQL loader
+      +----------+
 ```
 
 ### Test Files
@@ -590,12 +704,16 @@ CSS custom properties with `[data-theme="dark"]` and `[data-theme="light"]` attr
 |------|-------|------|----------|
 | `test_local_seeder.py` | 62 | Unit | SQLite only |
 | `test_db_adapter.py` | 40 | Unit | SQLite + psycopg2 mocks |
+| `test_db_adapter_resilience.py` | 25 | Unit | SQLite + psycopg2 mocks |
+| `test_settings.py` | 48 | Unit | Nothing |
 | `test_ingestion.py` | 25 | Unit | Nothing |
+| `test_report_generator.py` | 12 | Unit | SQLite only |
+| `test_dataset_acquisition.py` | 38 | Unit | Nothing |
 | `test_preprocessing.py` | 22 | Spark | PySpark + Java |
 | `test_cross_service_analysis.py` | 30 | Spark | PySpark + Java |
 | `test_failure_detection.py` | 24 | Spark | PySpark + Java |
 | `test_scalability_analysis.py` | 25 | Spark | PySpark + Java |
-| **Total** | **~228** | | |
+| **Total** | **~350** | | |
 
 ### Running Tests
 

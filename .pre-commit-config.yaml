@@ -1,0 +1,53 @@
+# ============================================================
+# Pre-commit hooks
+# ============================================================
+# Install once:
+#   pip install pre-commit && pre-commit install
+#
+# These run the same checks CI runs, so a failing build is caught before
+# the push rather than after it.
+# ============================================================
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        # Compose merge keys and the x-* anchors are valid YAML but use
+        # multiple documents in some setups; keep the check simple.
+        args: [--allow-multiple-documents]
+      - id: check-toml
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: mixed-line-ending
+        args: [--fix=lf]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: local
+    hooks:
+      # A tracked .env means credentials are in git history. Block it at
+      # the commit rather than discovering it in review.
+      - id: no-tracked-dotenv
+        name: .env must not be tracked
+        entry: >-
+          bash -c 'git ls-files --error-unmatch .env >/dev/null 2>&1 &&
+          { echo "ERROR: .env is tracked. Run: git rm --cached .env"; exit 1; } || exit 0'
+        language: system
+        pass_filenames: false
+
+      - id: fast-tests
+        name: non-Spark test suite
+        entry: bash scripts/run_tests.sh --quiet
+        language: system
+        pass_filenames: false
+        stages: [pre-push]

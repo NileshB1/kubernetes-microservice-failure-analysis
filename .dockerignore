@@ -1,0 +1,51 @@
+# ============================================================
+# Build-context exclusions
+# ============================================================
+# Keeps the image small and, more importantly, keeps local secrets and
+# databases out of it. .env in particular must never be baked into a
+# layer - it would ship credentials to anyone who pulls the image.
+# ============================================================
+
+.env
+.env.*
+!.env.example
+
+.git
+.github
+.gitignore
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+.coverage.*
+
+venv/
+.venv/
+env/
+
+# Local databases and generated artefacts
+*.db
+*.sqlite
+*.sqlite3
+dashboard.db
+output/
+data/
+logs/
+
+# Tests are not shipped in the runtime image; the Docker test target
+# mounts them instead.
+tests/
+
+# Editor and OS noise
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Docs are not needed at runtime
+docs/
+*.md
+!README.md

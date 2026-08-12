@@ -1,39 +1,37 @@
 # ============================================================
-# docker-compose.override.yml — Development Quick-Test Mode
+# docker-compose.override.yml - development quick-test mode
 # ============================================================
-# Docker Compose auto-merges this with docker-compose.yml.
-# Use when you want fast iteration with minimal resources.
+# Compose merges this on top of docker-compose.yml automatically, so
+# `docker compose up` gives you the small, fast configuration.
 #
-# Overrides:
-#   - 1 Spark worker (instead of 4)
-#   - 100K sample rows (instead of 1M)
-#   - 1g executor/driver memory (instead of 2g)
-#   - Reduced worker memory
-#   - Smaller scalability tests (100K–1M instead of 1M–50M)
-#   - Dashboard included (port 8501)
+# Overrides: 1 worker instead of 4, 100K rows instead of 1M, 1g memory
+# instead of 2g, and a scalability sweep that finishes in minutes.
 #
-# To use production settings, skip the override:
-#   docker-compose -f docker-compose.yml up --build
-#
-# To use quick-test mode (default when override exists):
-#   docker-compose up --build
+# For the full production sizing, skip the override explicitly:
+#   docker compose -f docker-compose.yml up --build
 # ============================================================
 
 services:
   spark-worker:
     deploy:
       replicas: 1
+      resources:
+        limits:
+          memory: 1500m
     environment:
       SPARK_WORKER_CORES: "1"
       SPARK_WORKER_MEMORY: "1g"
 
   pipeline:
     environment:
+      APP_ENV: development
       SAMPLE_DATA_ROWS: "100000"
       SPARK_DRIVER_MEMORY: "1g"
       SPARK_EXECUTOR_MEMORY: "1g"
       SCALABILITY_DATA_SIZES: "100000,500000,1000000"
+      LOG_LEVEL: DEBUG
 
   dashboard:
-    ports:
-      - "8501:8501"
+    environment:
+      APP_ENV: development
+      LOG_LEVEL: DEBUG

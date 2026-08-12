@@ -1,0 +1,115 @@
+
+# Project metadata & tool configuration
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "k8s-microservice-failure-analysis"
+version = "1.0.0"
+description = "Distributed analysis of Kubernetes microservice logs for failure detection, propagation tracing, and Spark scalability evaluation"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Data Intensive & Scalable Systems" }]
+keywords = ["spark", "kubernetes", "observability", "anomaly-detection", "streamlit"]
+
+# Lower bounds only
+dependencies = ["pyspark>=3.5",  "pandas>=2.2",
+  "numpy>=1.26", "matplotlib>=3.9", "seaborn>=0.13",  "pyyaml>=6.0",
+  "python-dotenv>=1.0",  "boto3>=1.35",
+  "psycopg2-binary>=2.9",  "sqlalchemy>=2.0",  "scipy>=1.14",  "streamlit>=1.40",
+  "plotly>=5.24",  "requests>=2.32",  "fpdf2>=2.8"]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3",
+  "pytest-timeout>=2.3",
+  "pytest-cov>=5.0",
+  "ruff>=0.6",
+]
+dataset = ["kagglehub>=0.3"]
+notebook = ["jupyter>=1.1", "ipython>=8.27"]
+
+[project.scripts]
+dashboard = "run_streamlit:main"
+
+[project.urls]
+Documentation = "https://github.com/"
+
+[tool.setuptools]
+packages = ["modules", "modules.ui", "modules.ui.pages"]
+
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+extend-exclude = ["output", "data", ".streamlit"]
+
+[tool.ruff.lint]
+select = [
+  "E", "F",  "W",  "I",   "B",   
+  "UP", "S",  "C4",  "SIM", 
+]
+ignore = [
+  "E501", "B008", 
+  "SIM108", 
+  "C408",  
+]
+
+[tool.ruff.lint.per-file-ignores]
+
+"tests/*" = ["S101", "S105", "S106", "S311", "S608", "S108"]
+
+
+"modules/local_seeder.py" = ["S311", "S608"]
+"modules/ingestion.py" = ["S311"]
+"modules/scalability_analysis.py" = ["S311", "S108"]
+"modules/visualization.py" = ["S608"]
+"scripts/*" = ["S311", "S603", "S607"]
+
+# run_streamlit binds 0.0.0.0 so the dashboard is reachable from outside a
+# container 
+"run_streamlit.py" = ["S311", "S104", "S603", "S608"]
+
+# Operations shells out to pipeline stages by design
+"modules/ui/pages/operations.py" = ["S603", "S607"]
+
+"modules/ui/data.py" = ["S608"]
+"modules/db_adapter.py" = ["S608"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["modules"]
+
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short --strict-markers --disable-warnings -p no:cacheprovider"
+timeout = 300
+markers = [
+  "slow: long-running tests (deselect with -m 'not slow')",
+  "spark: requires a live SparkSession and a JVM",
+  "unit: fast tests with no external dependency",
+]
+filterwarnings = [
+  "ignore::DeprecationWarning",
+  "ignore::FutureWarning",
+]
+
+
+# Coverage
+[tool.coverage.run]
+source = ["modules"]
+omit = ["modules/ui/pages/*", "*/__pycache__/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+  "pragma: no cover",
+  "if __name__ == .__main__.:",
+  "raise NotImplementedError",
+  "if TYPE_CHECKING:",
+]

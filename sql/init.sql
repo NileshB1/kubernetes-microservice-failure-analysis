@@ -79,12 +79,12 @@ CREATE TABLE IF NOT EXISTS scalability_metrics (
 
 -- Indexes for analytical queries
 CREATE INDEX IF NOT EXISTS idx_anomaly_scores_service ON anomaly_scores (service_name);
-CREATE INDEX IF NOT EXISTS idx_anomaly_scores_bucket ON anomaly_scores (time_bucket);
-CREATE INDEX IF NOT EXISTS idx_anomaly_scores_overall ON anomaly_scores (is_anomaly_overall);
-CREATE INDEX IF NOT EXISTS idx_cross_service_pairs_score ON cross_service_pairs (propagation_score DESC);
+CREATE INDEX if NOT EXISTS idx_anomaly_scores_bucket ON anomaly_scores (time_bucket);
+CREATE INDEX if NOT EXISTS idx_anomaly_scores_overall ON anomaly_scores (is_anomaly_overall);
+CREATE INDEX if NOT EXISTS idx_cross_service_pairs_score ON cross_service_pairs (propagation_score DESC);
 CREATE INDEX IF NOT EXISTS idx_scalability_metrics_size ON scalability_metrics (data_size);
-CREATE INDEX IF NOT EXISTS idx_failure_patterns_type ON failure_patterns (pattern_type);
+CREATE INDEX if NOT EXISTS idx_failure_patterns_type ON failure_patterns (pattern_type);
 
--- Grant permissions
+--grant permissions
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO sparkuser;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO sparkuser;

@@ -1,0 +1,42 @@
+# ============================================================
+# Streamlit Configuration
+# ============================================================
+# Native theming, so the viewer's own light/dark choice (three-dot menu ->
+# Settings) drives both Streamlit's chrome and our chart palette.
+# modules/ui/theme.py
+# reads the resolved theme via st.context.theme and returns the palette
+# validated for that surface.
+#
+# The colours below mirror the tokens in modules/ui/theme.py. Keep them in
+# step: this file styles Streamlit's own widgets, that file styles ours.
+# ============================================================
+
+[theme]
+base = "dark"
+primaryColor = "#3987e5"
+backgroundColor = "#0d0d0d"
+secondaryBackgroundColor = "#1a1a19"
+textColor = "#ffffff"
+font = "sans serif"
+
+[theme.light]
+primaryColor = "#2a78d6"
+backgroundColor = "#f9f9f7"
+secondaryBackgroundColor = "#fcfcfb"
+textColor = "#0b0b0b"
+
+[server]
+headless = true
+# The dashboard only ever reads its own data; no uploads are expected.
+maxUploadSize = 5
+enableXsrfProtection = true
+enableCORS = true
+
+[browser]
+gatherUsageStats = false
+
+[client]
+# Show a concise error in the page and keep the detail in the logs, so a
+# stack trace is never rendered to whoever opens the dashboard.
+showErrorDetails = "stacktrace"
+toolbarMode = "minimal"

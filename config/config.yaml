@@ -1,7 +1,6 @@
 
 # Project Configuration (YAML)
 
-
 # Module-level parameters
 ingestion:
   bucket_name: microservice-logs

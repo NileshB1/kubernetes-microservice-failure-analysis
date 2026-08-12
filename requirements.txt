@@ -1,24 +1,28 @@
-# ============================================================
-# Python Dependencies
-# ============================================================
-pyspark==4.2.0
-pandas==2.2.2
-numpy==1.26.4
-matplotlib==3.9.2
-seaborn==0.13.2
-pyyaml==6.0.2
-python-dotenv==1.0.1
+
+pyspark==3.5.3
+
+#data handling
+pandas==2.0.3
+numpy==1.24.4
+scipy==1.10.1
+pyarrow==17.0.0
+
+#storage
 boto3==1.35.20
 botocore==1.35.20
 psycopg2-binary==2.9.9
 sqlalchemy==2.0.35
-scipy==1.14.1
-jupyter==1.1.1
-ipython==8.27.0
-pytest==8.3.3
-pytest-timeout==2.3.1
+
+#dashboard
 streamlit==1.39.0
 plotly==5.24.1
-requests==2.32.3
+
+#reporting
+matplotlib==3.7.5
+seaborn==0.13.2
 fpdf2==2.8.1
-kagglehub==0.3.4
+
+# config
+pyyaml==6.0.2
+python-dotenv==1.0.1
+requests==2.32.3
