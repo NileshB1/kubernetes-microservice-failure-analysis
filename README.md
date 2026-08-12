@@ -55,38 +55,51 @@ for cross-service failure propagation, anomaly detection, and scalability evalua
 
 ```
 project-root/
-├── docker-compose.yml          # Orchestrates all services (production)
-├── docker-compose.override.yml # Dev override (1 worker, 100K rows)
-├── Dockerfile                  # Python + Spark application image
-├── requirements.txt            # Python dependencies
-├── .env                        # Environment variables
-├── config/
-│   ├── config.yaml             # Pipeline parameters
-│   └── spark-defaults.conf     # Spark cluster defaults
-├── run_streamlit.py            # One-command launcher (all 3 modes)
-├── modules/
-│   ├── __init__.py
-│   ├── shared_utils.py         # Spark session, logging, Postgres helpers
-│   ├── db_adapter.py           # DB abstraction (PostgreSQL + SQLite)
-│   ├── local_seeder.py         # SQLite seeder with realistic sample data
-│   ├── ingestion.py            # Module 1: Data generation & MinIO upload
-│   ├── preprocessing.py        # Module 2: Spark ETL & feature engineering
-│   ├── cross_service_analysis.py  # Module 3: RQ1 - Propagation analysis
-│   ├── failure_detection.py    # Module 4: RQ2 - Anomaly detection
-│   ├── scalability_analysis.py # Module 5: RQ3 - Scaling experiments
-│   ├── visualization.py        # Module 6: Plots & charts
-│   ├── dashboard.py             # Streamlit interactive dashboard
-│   └── report_generator.py     # PDF report generator
-├── scripts/
-│   ├── entrypoint.sh           # Docker entrypoint
-│   ├── run_pipeline.sh         # End-to-end pipeline runner
-│   ├── generate_placeholders.py # Sample PNG plot generator
-│   └── download_kaggle_dataset.py
-├── sql/
-│   └── init.sql                # PostgreSQL schema
-├── output/                     # Generated plots
-├── data/                       # Dataset files
-└── README.md
+│
+|-- Infrastructure & Deployment
+│   |-- Docker
+│   |-- Docker Compose
+│   |-- Environment Configuration
+│
+|-- Configuration
+│   |-- Pipeline Configuration
+│   |-- Spark Configuration
+│
+|-- Application Modules
+│   |-- Shared Infrastructure
+│   │   |-- Utilities & Logging
+│   │   |-- Database Abstraction
+│   │
+│   |-- Data Management
+│   │   |-- Data Seeding
+│   │   |- Data Ingestion
+│   │
+│   |-- Data Processing
+│   │   |- Preprocessing & Feature Engineering
+│   │
+│   |-- Research Analysis
+│   │   |-- Cross-Service Propagation Analysis
+│   │   |-- Failure & Anomaly Detection
+│   │   |-- Scalability Analysis
+│   │
+│   |-- Visualization
+│   │   -- Charts & Plot Generation
+│   │
+│   |-- Dashboard
+│   │   |-- Interactive Streamlit Dashboard
+│   │
+│  
+│
+|-- Automation & Scripts
+│   |-- Application Entrypoints
+│   |-- Pipeline Execution
+│   |--Dataset Management
+│   |-- Visualization Utilities
+│
+|-- Database
+│   |-- PostgreSQL Schema & Initialization
+│
+
 ```
 
 ---
