@@ -1,24 +1,24 @@
 # ============================================================
-# Report Generator — PDF Summary of All RQ Findings
+# Report Generator - PDF Summary of All RQ Findings
 # ============================================================
-# Generates a publication-quality PDF report from PostgreSQL
-# analysis results. Used by the Streamlit dashboard's
-# "Download Report" button.
+# Generates a publication-quality PDF report from the analysis results.
+# Used by the dashboard's Operations page.
 #
-# Dependencies: fpdf2, psycopg2-binary
+# Every query here is ANSI SQL that PostgreSQL and SQLite execute
+# identically, and the connection comes from db_adapter - so the report
+# works in the zero-dependency SQLite demo mode as well as against a
+# populated PostgreSQL instance.
+#
+# Dependencies: fpdf2
 # ============================================================
 
-import os
-import io
-import logging
 from datetime import datetime
 from textwrap import shorten
 
-from fpdf import FPDF
 from dotenv import load_dotenv
-import psycopg2
-import psycopg2.extras
+from fpdf import FPDF
 
+from modules.db_adapter import get_connection
 from modules.shared_utils import setup_logging
 
 load_dotenv()
@@ -29,41 +29,92 @@ logger = setup_logging("report_generator")
 # Database Helpers
 # ============================================================
 def _get_conn():
-    """Create a PostgreSQL connection."""
-    return psycopg2.connect(
-        host=os.getenv("POSTGRES_HOST", "postgres"),
-        port=int(os.getenv("POSTGRES_PORT", "5432")),
-        user=os.getenv("POSTGRES_USER", "sparkuser"),
-        password=os.getenv("POSTGRES_PASSWORD", "sparkpass"),
-        dbname=os.getenv("POSTGRES_DB", "microservice_analysis"),
-    )
+    """Open a connection to whichever backend DB_MODE selects."""
+    return get_connection()
 
 
 def _fetch(conn, query: str, params=None) -> list[tuple]:
     """Run a query and return all rows."""
-    with conn.cursor() as cur:
-        cur.execute(query, params)
+    # Closed explicitly rather than with `with`: sqlite3 cursors do not
+    # implement the context-manager protocol, and this has to work on
+    # both backends.
+    cur = conn.cursor()
+    try:
+        cur.execute(query, params or ())
         return cur.fetchall()
+    finally:
+        cur.close()
 
 
-def _fetch_one(conn, query: str) -> tuple | None:
+def _fetch_one(conn, query: str, params=None) -> tuple | None:
     """Run a query and return the first row."""
-    with conn.cursor() as cur:
-        cur.execute(query)
+    cur = conn.cursor()
+    try:
+        cur.execute(query, params or ())
         return cur.fetchone()
+    finally:
+        cur.close()
 
 
 # ============================================================
 # PDF Report Class
 # ============================================================
+# The built-in PDF fonts are Latin-1 only, so typographic characters and
+# arrows abort rendering rather than degrading. Transliterate them to
+# ASCII equivalents that carry the same meaning.
+_ASCII_FALLBACKS = str.maketrans(
+    {
+        "—": "-",
+        "–": "-",
+        "‑": "-",
+        "•": "-",
+        "·": "-",
+        "→": "->",
+        "←": "<-",
+        "↔": "<->",
+        "⟶": "->",
+        "≥": ">=",
+        "≤": "<=",
+        "≈": "~",
+        "±": "+/-",
+        "×": "x",
+        "÷": "/",
+        "✓": "[ok]",
+        "✔": "[ok]",
+        "✗": "[x]",
+        "✘": "[x]",
+        "'": "'",
+        '"': '"',
+        "…": "...",
+        "°": "deg",
+        "†": "+",
+        "‰": "o/oo",
+    }
+)
+
+
 class AnalysisReport(FPDF):
     """Custom PDF report with header/footer and structured sections."""
 
     def __init__(self):
         super().__init__(orientation="P", unit="mm", format="A4")
         self.set_auto_page_break(auto=True, margin=20)
-        # Use built-in fonts (no TTF needed)
-        self.set_title("K8s Microservice Failure Analysis — Research Report")
+        # Built-in fonts only - no TTF file has to ship with the image.
+        self.set_title("K8s Microservice Failure Analysis - Research Report")
+
+    def normalize_text(self, text):
+        """
+        Make every string safe for the Latin-1 built-in fonts.
+
+        Applied at the single point all text passes through, so it covers
+        both our own copy and values read from the database - a service
+        name containing anything unusual degrades to '?' instead of
+        failing the whole report.
+        """
+        if isinstance(text, str):
+            text = text.translate(_ASCII_FALLBACKS)
+            text = text.encode("latin-1", "replace").decode("latin-1")
+        return super().normalize_text(text)
 
     # ----------------------------------------------------------
     # Header / Footer
@@ -72,7 +123,7 @@ class AnalysisReport(FPDF):
         if self.page_no() > 1:
             self.set_font("Helvetica", "I", 8)
             self.set_text_color(128, 128, 128)
-            self.cell(0, 5, "Distributed Analysis of K8s Microservice Logs — Academic Report", align="C")
+            self.cell(0, 5, "Distributed Analysis of K8s Microservice Logs - Academic Report", align="C")
             self.ln(8)
 
     def footer(self):
@@ -158,7 +209,7 @@ class AnalysisReport(FPDF):
             self.set_font("Helvetica", "", 9)
             max_h = 6
             for i, cell in enumerate(row):
-                text = str(cell) if cell is not None else "—"
+                text = str(cell) if cell is not None else "-"
                 text = shorten(text, width=30, placeholder="...")
                 self.cell(col_widths[i], max_h, f" {text}", fill=True)
             self.ln()
@@ -176,7 +227,9 @@ class AnalysisReport(FPDF):
         # Title
         self.set_font("Helvetica", "B", 26)
         self.set_text_color(102, 126, 234)
-        self.multi_cell(0, 12, "Distributed Analysis of\nKubernetes Microservice Logs\nfor Failure Detection", align="C")
+        self.multi_cell(
+            0, 12, "Distributed Analysis of\nKubernetes Microservice Logs\nfor Failure Detection", align="C"
+        )
         self.ln(8)
 
         # Subtitle
@@ -200,8 +253,22 @@ class AnalysisReport(FPDF):
         # Metadata
         self.set_text_color(0, 0, 0)
         self.set_font("Helvetica", "", 11)
-        self.cell(0, 7, f"Generated: {datetime.now().strftime('%B %d, %Y at %H:%M')}", align="C", new_x="LMARGIN", new_y="NEXT")
-        self.cell(0, 7, "Technology: Apache Spark 3.5 · MinIO · PostgreSQL · Python", align="C", new_x="LMARGIN", new_y="NEXT")
+        self.cell(
+            0,
+            7,
+            f"Generated: {datetime.now().strftime('%B %d, %Y at %H:%M')}",
+            align="C",
+            new_x="LMARGIN",
+            new_y="NEXT",
+        )
+        self.cell(
+            0,
+            7,
+            "Technology: Apache Spark 3.5 - MinIO - PostgreSQL - Python",
+            align="C",
+            new_x="LMARGIN",
+            new_y="NEXT",
+        )
         self.ln(20)
 
         # Research Questions
@@ -219,7 +286,7 @@ class AnalysisReport(FPDF):
 
 
 # ============================================================
-# Report Builder — queries DB and populates PDF sections
+# Report Builder - queries DB and populates PDF sections
 # ============================================================
 def generate_report_bytes() -> bytes:
     """
@@ -246,28 +313,37 @@ def generate_report_bytes() -> bytes:
         prop_cnt = _fetch_one(conn, "SELECT COUNT(*) FROM cross_service_pairs WHERE propagation_score > 0")
         scale_cnt = _fetch_one(conn, "SELECT COUNT(DISTINCT data_size) FROM scalability_metrics")
 
-        rec = (proc_cnt[0] if proc_cnt else 0)
-        anom = (anom_cnt[0] if anom_cnt else 0)
-        prop = (prop_cnt[0] if prop_cnt else 0)
-        scal = (scale_cnt[0] if scale_cnt else 0)
+        rec = proc_cnt[0] if proc_cnt else 0
+        anom = anom_cnt[0] if anom_cnt else 0
+        prop = prop_cnt[0] if prop_cnt else 0
+        scal = scale_cnt[0] if scale_cnt else 0
 
-        pdf.metric_row([
-            ("Records Processed", f"{rec:,}"),
-            ("Anomalies Detected", f"{anom:,}"),
-            ("Propagation Pairs", str(prop)),
-            ("Scale Tests Run", str(scal)),
-        ], cols=4)
+        pdf.metric_row(
+            [
+                ("Records Processed", f"{rec:,}"),
+                ("Anomalies Detected", f"{anom:,}"),
+                ("Propagation Pairs", str(prop)),
+                ("Scale Tests Run", str(scal)),
+            ],
+            cols=4,
+        )
 
         pdf.ln(4)
 
-        error_rate = _fetch_one(conn, """
+        error_rate = _fetch_one(
+            conn,
+            """
             SELECT ROUND(100.0 * SUM(is_failure) / NULLIF(COUNT(*),0), 2)
             FROM processed_telemetry
-        """)
-        anomaly_rate = _fetch_one(conn, """
+        """,
+        )
+        anomaly_rate = _fetch_one(
+            conn,
+            """
             SELECT ROUND(100.0 * SUM(is_anomaly_overall) / NULLIF(COUNT(*),0), 2)
             FROM anomaly_scores
-        """)
+        """,
+        )
 
         summary_text = (
             f"This report presents findings from a distributed analysis of Kubernetes "
@@ -293,7 +369,9 @@ def generate_report_bytes() -> bytes:
 
         # Top propagation pairs
         pdf.sub_title("Top Propagation Paths by Score")
-        top_props = _fetch(conn, """
+        top_props = _fetch(
+            conn,
+            """
             SELECT caller_service, callee_service,
                    ROUND(propagation_score, 4) as score,
                    call_count, co_failure_count
@@ -301,7 +379,8 @@ def generate_report_bytes() -> bytes:
             WHERE propagation_score > 0
             ORDER BY propagation_score DESC
             LIMIT 10
-        """)
+        """,
+        )
         pdf.simple_table(
             ["Caller Service", "Callee Service", "Score", "Calls", "Co-Failures"],
             top_props,
@@ -310,14 +389,17 @@ def generate_report_bytes() -> bytes:
 
         # Propagation chains
         pdf.sub_title("Top Propagation Chains")
-        chains = _fetch(conn, """
+        chains = _fetch(
+            conn,
+            """
             SELECT source_service, target_service,
                    COUNT(*) as cnt,
                    ROUND(AVG(propagation_lag_sec), 2) as avg_lag
             FROM propagation_chains
             GROUP BY source_service, target_service
             ORDER BY cnt DESC LIMIT 8
-        """)
+        """,
+        )
         pdf.simple_table(
             ["Source Service", "Target Service", "Chains", "Avg Lag (s)"],
             chains,
@@ -326,14 +408,17 @@ def generate_report_bytes() -> bytes:
 
         # Error correlations
         pdf.sub_title("Significant Error Correlations")
-        corrs = _fetch(conn, """
+        corrs = _fetch(
+            conn,
+            """
             SELECT service_a, service_b,
                    ROUND(error_correlation, 4) as corr,
                    sample_size
             FROM error_correlations
             ORDER BY ABS(error_correlation) DESC
             LIMIT 8
-        """)
+        """,
+        )
         pdf.simple_table(
             ["Service A", "Service B", "Correlation", "Sample Size"],
             corrs,
@@ -355,7 +440,9 @@ def generate_report_bytes() -> bytes:
         )
 
         # Anomaly summary
-        anom_summary = _fetch_one(conn, """
+        anom_summary = _fetch_one(
+            conn,
+            """
             SELECT COUNT(*),
                    COALESCE(SUM(is_anomaly_overall), 0),
                    COALESCE(ROUND(100.0 * SUM(is_anomaly_overall) / NULLIF(COUNT(*), 0), 2), 0),
@@ -363,25 +450,32 @@ def generate_report_bytes() -> bytes:
                    COALESCE(SUM(is_anomaly_latency), 0),
                    COALESCE(SUM(is_anomaly_resource), 0)
             FROM anomaly_scores
-        """)
+        """,
+        )
 
         if anom_summary:
-            pdf.metric_row([
-                ("Total Anomalies", f"{anom_summary[1]:,}"),
-                ("Anomaly Rate", f"{anom_summary[2]}%"),
-                ("Error Signal", f"{anom_summary[3]:,}"),
-                ("Latency Signal", f"{anom_summary[4]:,}"),
-            ], cols=4)
+            pdf.metric_row(
+                [
+                    ("Total Anomalies", f"{anom_summary[1]:,}"),
+                    ("Anomaly Rate", f"{anom_summary[2]}%"),
+                    ("Error Signal", f"{anom_summary[3]:,}"),
+                    ("Latency Signal", f"{anom_summary[4]:,}"),
+                ],
+                cols=4,
+            )
 
         pdf.ln(2)
 
         # Top anomalous services
         pdf.sub_title("Most Anomalous Services")
-        top_svcs = _fetch(conn, """
+        top_svcs = _fetch(
+            conn,
+            """
             SELECT service_name, COUNT(*) as cnt
             FROM anomaly_scores WHERE is_anomaly_overall = 1
             GROUP BY service_name ORDER BY cnt DESC LIMIT 10
-        """)
+        """,
+        )
         pdf.simple_table(
             ["Service", "Anomaly Count"],
             top_svcs,
@@ -390,13 +484,16 @@ def generate_report_bytes() -> bytes:
 
         # Failure patterns
         pdf.sub_title("Failure Pattern Distribution")
-        patterns = _fetch(conn, """
+        patterns = _fetch(
+            conn,
+            """
             SELECT pattern_type,
                    SUM(occurrence_count) as total,
                    ROUND(AVG(avg_severity), 2) as avg_sev
             FROM failure_patterns
             GROUP BY pattern_type ORDER BY total DESC
-        """)
+        """,
+        )
         pdf.simple_table(
             ["Pattern Type", "Occurrences", "Avg Severity"],
             patterns,
@@ -419,14 +516,17 @@ def generate_report_bytes() -> bytes:
         )
 
         # Scalability table
-        scale_rows = _fetch(conn, """
+        scale_rows = _fetch(
+            conn,
+            """
             SELECT data_size,
                    ROUND(AVG(total_sec), 2) as avg_time,
                    ROUND(AVG(throughput_rows_per_sec), 0) as throughput,
                    ROUND(AVG(speedup_vs_baseline), 3) as speedup
             FROM scalability_metrics
             GROUP BY data_size ORDER BY data_size
-        """)
+        """,
+        )
 
         if scale_rows:
             pdf.sub_title("Execution Time vs Data Size")
@@ -448,8 +548,7 @@ def generate_report_bytes() -> bytes:
                     ratio = row[0] / baseline_rows
                     speedup = baseline / row[1] if row[1] > 0 else 0
                     efficiency = speedup / ratio if ratio > 0 else 0
-                    eff_rows.append((f"{row[0]:,}", f"{ratio:.0f}x",
-                                     f"{speedup:.3f}", f"{efficiency:.1%}"))
+                    eff_rows.append((f"{row[0]:,}", f"{ratio:.0f}x", f"{speedup:.3f}", f"{efficiency:.1%}"))
                 pdf.simple_table(
                     ["Data Size", "Ratio", "Speed-up", "Efficiency"],
                     eff_rows,
@@ -457,7 +556,9 @@ def generate_report_bytes() -> bytes:
                 )
 
             # Operation breakdown
-            op_rows = _fetch(conn, """
+            op_rows = _fetch(
+                conn,
+                """
                 SELECT data_size,
                        ROUND(AVG(groupby_agg_sec), 2),
                        ROUND(AVG(window_fn_sec), 2),
@@ -466,7 +567,8 @@ def generate_report_bytes() -> bytes:
                 FROM scalability_metrics
                 GROUP BY data_size ORDER BY data_size
                 LIMIT 5
-            """)
+            """,
+            )
             if op_rows:
                 pdf.sub_title("Operation-Level Breakdown (seconds)")
                 pdf.simple_table(
@@ -476,11 +578,14 @@ def generate_report_bytes() -> bytes:
                 )
 
         # Scaling characteristic
-        char_row = _fetch_one(conn, """
+        char_row = _fetch_one(
+            conn,
+            """
             SELECT ROUND(AVG(speedup_vs_baseline), 3)
             FROM scalability_metrics
             WHERE data_size = (SELECT MAX(data_size) FROM scalability_metrics)
-        """)
+        """,
+        )
         pdf.ln(2)
         char_text = "Finding: The Spark pipeline demonstrated scalable distributed processing behaviour. "
         if char_row and char_row[0]:
@@ -514,11 +619,9 @@ def generate_report_bytes() -> bytes:
             "RQ1: Cross-service failure propagation was quantitatively measured through "
             "propagation scores derived from parent-child span relationships. "
             "Services with high propagation scores represent critical failure cascades.",
-
-            "RQ2: Z-score anomaly detection (threshold 3σ) effectively identified abnormal "
+            "RQ2: Z-score anomaly detection (threshold 3sigma) effectively identified abnormal "
             "behaviour across error rate, latency, and resource dimensions. "
             "Multi-signal anomalies (2+ signals) provide the strongest failure indicators.",
-
             "RQ3: Spark demonstrated scalable processing across data volumes from "
             "100K to 1M+ rows. Throughput and execution time scaling curves provide "
             "quantitative evidence of distributed processing efficiency.",
@@ -526,7 +629,7 @@ def generate_report_bytes() -> bytes:
         for f_text in findings:
             pdf.set_font("Helvetica", "", 10)
             pdf.set_fill_color(245, 245, 250)
-            pdf.multi_cell(0, 6, f"  •  {f_text}", fill=True)
+            pdf.multi_cell(0, 6, f"  -  {f_text}", fill=True)
             pdf.ln(2)
 
         # Generate PDF bytes
@@ -540,8 +643,10 @@ def generate_report_bytes() -> bytes:
 # Standalone entry point (for testing)
 # ============================================================
 if __name__ == "__main__":
+    from modules.settings import get_settings
+
     pdf_bytes = generate_report_bytes()
-    output_path = os.environ.get("OUTPUT_DIR", "/output") + "/analysis_report.pdf"
-    with open(output_path, "wb") as f:
-        f.write(pdf_bytes)
+    output_path = get_settings().app.output_dir / "analysis_report.pdf"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_bytes(pdf_bytes)
     logger.info(f"Report written to {output_path} ({len(pdf_bytes):,} bytes)")
